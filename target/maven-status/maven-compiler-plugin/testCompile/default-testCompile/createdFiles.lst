@@ -1,0 +1,6 @@
+com\lidar\export\CsvExporterTest.class
+com\lidar\processing\GridPartitionerTest.class
+com\lidar\processing\StatisticsSummarizerTest.class
+com\lidar\validator\DataValidatorTest.class
+com\lidar\processing\GridAggregatorTest.class
+com\lidar\reader\PointCloudReaderTest.class
