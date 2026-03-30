@@ -62,8 +62,8 @@ public class PointCloudReader {
         if (trimmed.isEmpty()) return null;
 
         String[] tokens = trimmed.split(",");
-        if (tokens.length < 3) {
-            System.err.println("[PointCloudReader] Warning: skipping malformed line (expected 3 fields): " + line);
+        if (tokens.length < 4) {
+            System.err.println("[PointCloudReader] Warning: skipping malformed line (expected 4 fields): " + line);
             return null;
         }
 
@@ -71,7 +71,8 @@ public class PointCloudReader {
             double x = Double.parseDouble(tokens[0].trim());
             double y = Double.parseDouble(tokens[1].trim());
             double z = Double.parseDouble(tokens[2].trim());
-            return new Point(x, y, z);
+            int type = Integer.parseInt(tokens[3].trim());
+            return new Point(x, y, z, type);
         } catch (NumberFormatException e) {
             System.err.println("[PointCloudReader] Warning: skipping unparseable line: " + line);
             return null;
