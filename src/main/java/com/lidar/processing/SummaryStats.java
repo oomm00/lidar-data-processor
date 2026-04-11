@@ -5,6 +5,9 @@ public record SummaryStats(
         double avgCanopyHeight,
         double maxCanopyHeight,
         int totalPoints,
-        long highRiskZoneCount
+        long highRiskZoneCount,
+        int fireRiskZones,
+        int landslideZones,
+        int urbanZones
 ) {
 }

@@ -12,7 +12,7 @@ import java.util.Map;
 public class CsvExporter {
 
     private static final String HEADER =
-            "grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density";
+            "grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density,ground_points,vegetation_points,building_points,rock_points,dominant_type,vegetation_percent,built_percent,risk_level";
 
     public void export(Map<GridCoordinate, GridCell> grid, Path outputPath) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(outputPath)) {
@@ -21,14 +21,22 @@ public class CsvExporter {
 
             for (Map.Entry<GridCoordinate, GridCell> entry : grid.entrySet()) {
                 GridCell cell = entry.getValue();
-                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d",
+                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%s,%.4f,%.4f,%s",
                         cell.getGridX(),
                         cell.getGridY(),
                         cell.getMinZ(),
                         cell.getMaxZ(),
                         cell.getCanopyHeight(),
                         cell.getAvgZ(),
-                        cell.getPointDensity()
+                        cell.getPointDensity(),
+                        cell.getGroundPoints(),
+                        cell.getVegetationPoints(),
+                        cell.getBuildingPoints(),
+                        cell.getRockPoints(),
+                        cell.getDominantType(),
+                        cell.getVegetationPercent(),
+                        cell.getBuiltPercent(),
+                        cell.getRiskLevel()
                 );
                 writer.write(line);
                 writer.newLine();

@@ -32,8 +32,8 @@ public class LidarController {
             double maxCanopyHeight,
             int totalPoints,
             long highRiskZoneCount,
-            String outputFile
-    ) {}
+            String outputFile) {
+    }
 
     private final PointCloudReader reader = new PointCloudReader();
     private final DataValidator validator = new DataValidator();
@@ -46,8 +46,7 @@ public class LidarController {
     @PostMapping("/process")
     public ResponseEntity<?> process(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "resolution", defaultValue = "1.0") double resolution
-    ) {
+            @RequestParam(value = "resolution", defaultValue = "1.0") double resolution) {
         Path tempInput = null;
         try {
             // 1. Save uploaded file to a temp path
@@ -78,8 +77,7 @@ public class LidarController {
                     stats.maxCanopyHeight(),
                     stats.totalPoints(),
                     stats.highRiskZoneCount(),
-                    outputPath.toString()
-            );
+                    outputPath.toString());
             return ResponseEntity.ok(result);
 
         } catch (IOException e) {
@@ -91,7 +89,8 @@ public class LidarController {
             if (tempInput != null) {
                 try {
                     Files.deleteIfExists(tempInput);
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+                }
             }
         }
     }

@@ -27,7 +27,7 @@ public class GridAggregator {
                         coord,
                         c -> new GridCell(c.x(), c.y())
                 );
-                cell.addPoint(point.z());
+                cell.addPoint(point.z(), point.type());
             });
         }
 

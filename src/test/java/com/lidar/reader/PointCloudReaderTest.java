@@ -19,20 +19,20 @@ class PointCloudReaderTest {
     @Test
     void readsValidLinesWithHeader(@TempDir Path tmp) throws IOException {
         Path csv = tmp.resolve("data.csv");
-        Files.writeString(csv, "x,y,z\n1.0,2.0,3.0\n4.0,5.0,6.0\n");
+        Files.writeString(csv, "x,y,z,type\n1.0,2.0,3.0,1\n4.0,5.0,6.0,2\n");
 
         try (Stream<Point> stream = reader.read(csv)) {
             List<Point> points = stream.toList();
             assertEquals(2, points.size());
-            assertEquals(new Point(1.0, 2.0, 3.0), points.get(0));
-            assertEquals(new Point(4.0, 5.0, 6.0), points.get(1));
+            assertEquals(new Point(1.0, 2.0, 3.0, 1), points.get(0));
+            assertEquals(new Point(4.0, 5.0, 6.0, 2), points.get(1));
         }
     }
 
     @Test
     void readsValidLinesWithoutHeader(@TempDir Path tmp) throws IOException {
         Path csv = tmp.resolve("data.csv");
-        Files.writeString(csv, "1.0,2.0,3.0\n4.0,5.0,6.0\n");
+        Files.writeString(csv, "1.0,2.0,3.0,1\n4.0,5.0,6.0,2\n");
 
         try (Stream<Point> stream = reader.read(csv)) {
             List<Point> points = stream.toList();
@@ -43,25 +43,25 @@ class PointCloudReaderTest {
     @Test
     void skipsUnparseableLine(@TempDir Path tmp) throws IOException {
         Path csv = tmp.resolve("data.csv");
-        Files.writeString(csv, "x,y,z\n1.0,2.0,3.0\nbad,line,here\n7.0,8.0,9.0\n");
+        Files.writeString(csv, "x,y,z,type\n1.0,2.0,3.0,1\nbad,line,here\n7.0,8.0,9.0,3\n");
 
         try (Stream<Point> stream = reader.read(csv)) {
             List<Point> points = stream.toList();
             assertEquals(2, points.size());
-            assertEquals(new Point(1.0, 2.0, 3.0), points.get(0));
-            assertEquals(new Point(7.0, 8.0, 9.0), points.get(1));
+            assertEquals(new Point(1.0, 2.0, 3.0, 1), points.get(0));
+            assertEquals(new Point(7.0, 8.0, 9.0, 3), points.get(1));
         }
     }
 
     @Test
     void skipsLineWithTooFewTokens(@TempDir Path tmp) throws IOException {
         Path csv = tmp.resolve("data.csv");
-        Files.writeString(csv, "x,y,z\n1.0,2.0\n4.0,5.0,6.0\n");
+        Files.writeString(csv, "x,y,z,type\n1.0,2.0,3.0\n4.0,5.0,6.0,2\n");
 
         try (Stream<Point> stream = reader.read(csv)) {
             List<Point> points = stream.toList();
             assertEquals(1, points.size());
-            assertEquals(new Point(4.0, 5.0, 6.0), points.get(0));
+            assertEquals(new Point(4.0, 5.0, 6.0, 2), points.get(0));
         }
     }
 
@@ -78,7 +78,7 @@ class PointCloudReaderTest {
     @Test
     void headerOnlyFileReturnsEmptyStream(@TempDir Path tmp) throws IOException {
         Path csv = tmp.resolve("header.csv");
-        Files.writeString(csv, "x,y,z\n");
+        Files.writeString(csv, "x,y,z,type\n");
 
         try (Stream<Point> stream = reader.read(csv)) {
             assertEquals(0, stream.toList().size());
