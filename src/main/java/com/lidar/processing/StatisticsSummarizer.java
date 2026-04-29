@@ -40,7 +40,6 @@ public class StatisticsSummarizer {
 
         // BFS to find connected risk zones
         Set<GridCoordinate> visited = new HashSet<>();
-        long totalRiskZones = 0;
         int fireRiskZones = 0;
         int landslideZones = 0;
         int urbanZones = 0;
@@ -49,8 +48,7 @@ public class StatisticsSummarizer {
             GridCoordinate start = entry.getKey();
             if (visited.contains(start)) continue;
 
-            // BFS — flood fill from this cell to all connected cells
-            // sharing the same risk level
+            // BFS — flood fill from this cell to all connected non-NORMAL cells
             String zoneRisk = entry.getValue();
             Queue<GridCoordinate> queue = new ArrayDeque<>();
             queue.add(start);
@@ -64,14 +62,13 @@ public class StatisticsSummarizer {
                             current.y() + dir[1]
                     );
                     if (!visited.contains(neighbor)
-                            && zoneRisk.equals(riskMap.get(neighbor))) {
+                            && riskMap.containsKey(neighbor)) {
                         visited.add(neighbor);
                         queue.add(neighbor);
                     }
                 }
             }
 
-            totalRiskZones++;
             switch (zoneRisk) {
                 case "FIRE_RISK" -> fireRiskZones++;
                 case "LANDSLIDE_RISK" -> landslideZones++;
@@ -79,9 +76,11 @@ public class StatisticsSummarizer {
             }
         }
 
+        long highRiskZoneCount = fireRiskZones + landslideZones + urbanZones;
+
         return new SummaryStats(
                 totalCells, avgCanopyHeight, maxCanopyHeight,
-                totalPoints, totalRiskZones,
+                totalPoints, highRiskZoneCount,
                 fireRiskZones, landslideZones, urbanZones
         );
     }

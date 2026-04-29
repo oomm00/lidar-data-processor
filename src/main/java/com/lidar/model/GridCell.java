@@ -88,20 +88,41 @@ public class GridCell {
     }
 
     public String getRiskLevel() {
+        if (pointCount == 0) return "NORMAL";
+        
         double vegPercent = getVegetationPercent();
         double builtPercent = getBuiltPercent();
-        double canopyHeight = getCanopyHeight();
-
-        if (vegPercent > 60.0 && canopyHeight > 10.0) {
-            return "FIRE_RISK";
-        }
-        if (builtPercent > 40.0) {
-            return "URBAN_ZONE";
-        }
-        if (canopyHeight > 15.0) {
+        double groundPercent = (groundPoints * 100.0) / pointCount;
+        double canopy = getCanopyHeight();
+        double avgElevation = getAvgZ();
+        
+        // URBAN: significant building presence
+        if (builtPercent > 30.0) return "URBAN_ZONE";
+        
+        // FIRE RISK: dense vegetation in mid-elevation dry zone
+        // Mid elevation forest (not too high = snow, not too low = wet)
+        if (vegPercent > 50.0 
+            && canopy > 5.0 
+            && avgElevation > 400 
+            && avgElevation < 700) return "FIRE_RISK";
+        
+        // LANDSLIDE: steep terrain with dominant ground/rock
+        // High canopy variance on steep slope
+        if (canopy > 25.0 
+            && groundPercent + getRockPercent() > 50.0) 
             return "LANDSLIDE_RISK";
-        }
+        
+        // LANDSLIDE: very high elevation rocky terrain
+        if (avgElevation > 650 
+            && getRockPercent() > 30.0) 
+            return "LANDSLIDE_RISK";
+        
         return "NORMAL";
+    }
+
+    private double getRockPercent() {
+        if (pointCount == 0) return 0.0;
+        return (rockPoints * 100.0) / pointCount;
     }
 
     // --- Field getters ---

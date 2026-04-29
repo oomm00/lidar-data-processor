@@ -32,6 +32,9 @@ public class LidarController {
             double maxCanopyHeight,
             int totalPoints,
             long highRiskZoneCount,
+            int fireRiskZones,
+            int landslideZones,
+            int urbanZones,
             String outputFile) {
     }
 
@@ -77,6 +80,9 @@ public class LidarController {
                     stats.maxCanopyHeight(),
                     stats.totalPoints(),
                     stats.highRiskZoneCount(),
+                    stats.fireRiskZones(),
+                    stats.landslideZones(),
+                    stats.urbanZones(),
                     outputPath.toString());
             return ResponseEntity.ok(result);
 

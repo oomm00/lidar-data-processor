@@ -1,13 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import UploadForm from './components/UploadForm';
 import SummaryPanel from './components/SummaryPanel';
-import HeatmapGrid from './components/HeatmapGrid';
 import FilterControls from './components/FilterControls';
+import TerrainDEM from './components/TerrainDEM';
 
 export default function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cells, setCells] = useState(null);
+  const [filteredCells, setFilteredCells] = useState(null);
+
+  useEffect(() => {
+    setFilteredCells(null);
+    if (!result) {
+      setCells(null);
+      return;
+    }
+
+    const fetchGridData = async () => {
+      try {
+        const response = await axios.get('http://localhost:8080/api/result', {
+          responseType: 'text',
+        });
+
+        const lines = response.data.trim().split(/\r?\n/);
+        if (lines.length <= 1) {
+          setCells([]);
+          return;
+        }
+
+        const parsedCells = lines
+          .slice(1)
+          .map((line) => {
+            const p = line.split(',');
+            if (p.length < 15) return null;
+            return {
+              gridX: parseInt(p[0], 10),
+              gridY: parseInt(p[1], 10),
+              minHeight: parseFloat(p[2]),
+              maxHeight: parseFloat(p[3]),
+              canopyHeight: parseFloat(p[4]),
+              avgHeight: parseFloat(p[5]),
+              pointDensity: parseInt(p[6], 10),
+              groundPoints: parseInt(p[7], 10),
+              vegetationPoints: parseInt(p[8], 10),
+              buildingPoints: parseInt(p[9], 10),
+              rockPoints: parseInt(p[10], 10),
+              dominantType: p[11],
+              vegetationPercent: parseFloat(p[12]),
+              builtPercent: parseFloat(p[13]),
+              riskLevel: p[14],
+            };
+          })
+          .filter(Boolean);
+
+        setCells(parsedCells);
+      } catch (err) {
+        console.error('Failed to fetch map data:', err);
+        setError('Failed to load map data from server.');
+      }
+    };
+
+    fetchGridData();
+  }, [result]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
@@ -69,30 +126,34 @@ export default function App() {
           />
         </section>
 
-        {/* Section 3: Filter Controls (Placed above results for better flow) */}
+        {/* Section 2: Map Controls */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h2 className="text-lg font-semibold mb-4 text-slate-800 border-b pb-2 flex items-center">
             <span className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2 font-bold">2</span>
             Map Controls
           </h2>
-          <FilterControls result={result} />
+          <FilterControls cells={cells} onFilterChange={setFilteredCells} />
         </section>
 
-        {/* Section 2: Results (Summary + Map) */}
+        {/* Section 3: Analysis Results (Summary only) */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h2 className="text-lg font-semibold mb-6 text-slate-800 border-b pb-2 flex items-center">
             <span className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2 font-bold">3</span>
             Analysis Results
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-1">
-              <SummaryPanel result={result} />
-            </div>
-            <div className="lg:col-span-3 bg-slate-50 rounded-lg min-h-[500px] border border-slate-200 flex items-center justify-center shadow-inner">
-              <HeatmapGrid result={result} />
-            </div>
-          </div>
+          <SummaryPanel result={result} />
         </section>
+
+        {/* Section 4: 3D Terrain View */}
+        {cells && (
+          <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-lg font-semibold mb-4 text-slate-800 border-b pb-2 flex items-center">
+              <span className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center text-sm mr-2 font-bold">4</span>
+              3D Terrain View (DEM)
+            </h2>
+            <TerrainDEM cells={cells} filteredCells={filteredCells} />
+          </section>
+        )}
 
       </main>
 

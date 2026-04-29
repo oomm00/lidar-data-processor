@@ -15,7 +15,10 @@ export default function SummaryPanel({ result }) {
     totalPoints,
     avgCanopyHeight,
     maxCanopyHeight,
-    highRiskZoneCount
+    highRiskZoneCount,
+    fireRiskZones,
+    landslideZones,
+    urbanZones
   } = result;
 
   const stats = [
@@ -53,6 +56,44 @@ export default function SummaryPanel({ result }) {
             </span>
           )}
         </div>
+      </div>
+
+      {/* Fire Risk Zones */}
+      <div className={`p-4 rounded-lg border shadow-sm flex flex-col items-start justify-center transition-all
+        ${fireRiskZones > 0
+          ? 'bg-red-50 border-red-200 hover:border-red-300'
+          : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+        <span className={`text-xs font-semibold uppercase tracking-wider mb-1
+          ${fireRiskZones > 0 ? 'text-red-600' : 'text-slate-500'}`}>
+          Fire Risk Zones
+        </span>
+        <span className={`text-2xl font-bold ${fireRiskZones > 0 ? 'text-red-700' : 'text-slate-800'}`}>
+          {fireRiskZones.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Landslide Zones */}
+      <div className={`p-4 rounded-lg border shadow-sm flex flex-col items-start justify-center transition-all
+        ${landslideZones > 0
+          ? 'bg-orange-50 border-orange-200 hover:border-orange-300'
+          : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+        <span className={`text-xs font-semibold uppercase tracking-wider mb-1
+          ${landslideZones > 0 ? 'text-orange-600' : 'text-slate-500'}`}>
+          Landslide Zones
+        </span>
+        <span className={`text-2xl font-bold ${landslideZones > 0 ? 'text-orange-700' : 'text-slate-800'}`}>
+          {landslideZones.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Urban Zones */}
+      <div className="p-4 rounded-lg border shadow-sm flex flex-col items-start justify-center transition-all bg-blue-50 border-blue-200 hover:border-blue-300">
+        <span className="text-xs font-semibold uppercase tracking-wider mb-1 text-blue-600">
+          Urban Zones
+        </span>
+        <span className="text-2xl font-bold text-blue-700">
+          {urbanZones.toLocaleString()}
+        </span>
       </div>
     </div>
   );

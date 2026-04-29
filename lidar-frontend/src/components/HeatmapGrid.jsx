@@ -25,7 +25,7 @@ const GAP = 1;
 const LABEL_MARGIN = 30;
 const MIN_CANVAS = 400;
 
-export default function HeatmapGrid({ result }) {
+export default function HeatmapGrid({ result, filteredCells, onCellsLoaded }) {
   const [gridCells, setGridCells] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -82,6 +82,7 @@ export default function HeatmapGrid({ result }) {
           .filter(Boolean);
 
         setGridCells(parsedCells);
+        if (onCellsLoaded) onCellsLoaded(parsedCells);
       } catch (err) {
         console.error('Failed to fetch map data:', err);
         setError('Failed to load map data from server.');
@@ -93,14 +94,17 @@ export default function HeatmapGrid({ result }) {
     fetchGridData();
   }, [result]);
 
+  // The cells to actually render: use filteredCells if provided, otherwise full gridCells
+  const displayCells = filteredCells != null ? filteredCells : gridCells;
+
   // Precompute bounds and cell lookup
   const { minX, maxX, minY, maxY, cols, rows, cellMap } = useMemo(() => {
-    if (gridCells.length === 0) {
+    if (displayCells.length === 0) {
       return { minX: 0, maxX: 0, minY: 0, maxY: 0, cols: 0, rows: 0, cellMap: new Map() };
     }
     let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
     const map = new Map();
-    for (const c of gridCells) {
+    for (const c of displayCells) {
       if (c.gridX < mnX) mnX = c.gridX;
       if (c.gridX > mxX) mxX = c.gridX;
       if (c.gridY < mnY) mnY = c.gridY;
@@ -116,7 +120,7 @@ export default function HeatmapGrid({ result }) {
       rows: mxY - mnY + 1,
       cellMap: map,
     };
-  }, [gridCells]);
+  }, [displayCells]);
 
   const step = cellSize + GAP;
 
@@ -132,7 +136,7 @@ export default function HeatmapGrid({ result }) {
 
   // Draw the canvas
   useEffect(() => {
-    if (!canvasRef.current || gridCells.length === 0 || loading) return;
+    if (!canvasRef.current || displayCells.length === 0 || loading) return;
 
     const canvas = canvasRef.current;
     canvas.width = canvasWidth;
@@ -179,7 +183,7 @@ export default function HeatmapGrid({ result }) {
 
     // 4. Draw data cells
     ctx.globalAlpha = 0.85;
-    for (const cell of gridCells) {
+    for (const cell of displayCells) {
       const px = LABEL_MARGIN + (cell.gridX - minX) * step;
       const py = LABEL_MARGIN + (cell.gridY - minY) * step;
 
@@ -202,12 +206,12 @@ export default function HeatmapGrid({ result }) {
     }
 
     ctx.globalAlpha = 1;
-  }, [gridCells, viewMode, cellSize, loading, canvasWidth, canvasHeight, cols, rows, minX, minY]);
+  }, [displayCells, viewMode, cellSize, loading, canvasWidth, canvasHeight, cols, rows, minX, minY]);
 
   // Hover handler
   const handleMouseMove = useCallback(
     (e) => {
-      if (gridCells.length === 0 || !canvasRef.current) {
+      if (displayCells.length === 0 || !canvasRef.current) {
         setTooltip(null);
         return;
       }
@@ -225,7 +229,7 @@ export default function HeatmapGrid({ result }) {
         setTooltip(null);
       }
     },
-    [gridCells, cellMap, step, minX, minY],
+    [displayCells, cellMap, step, minX, minY],
   );
 
   const handleMouseLeave = useCallback(() => setTooltip(null), []);
@@ -319,7 +323,7 @@ export default function HeatmapGrid({ result }) {
               <p className="font-semibold">{error}</p>
             </div>
           </div>
-        ) : gridCells.length === 0 ? (
+        ) : displayCells.length === 0 ? (
           <div
             className="flex items-center justify-center text-slate-500"
             style={{ width: MIN_CANVAS, height: MIN_CANVAS }}

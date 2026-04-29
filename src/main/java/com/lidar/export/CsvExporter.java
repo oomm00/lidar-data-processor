@@ -21,7 +21,7 @@ public class CsvExporter {
 
             for (Map.Entry<GridCoordinate, GridCell> entry : grid.entrySet()) {
                 GridCell cell = entry.getValue();
-                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%s,%.4f,%.4f,%s",
+                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%s,%.2f,%.2f,%s",
                         cell.getGridX(),
                         cell.getGridY(),
                         cell.getMinZ(),
