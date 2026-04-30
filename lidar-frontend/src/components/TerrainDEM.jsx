@@ -1,176 +1,172 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
-// ── Risk‑level color palette (bar chart mode) ──
-const RISK_COLORS = {
-  NORMAL: '#22c55e',
-  FIRE_RISK: '#ef4444',
-  LANDSLIDE_RISK: '#f97316',
-  URBAN_ZONE: '#3b82f6',
-};
+const HEIGHT_SCALE = 0.20;
 
-function riskColor(level) {
-  return RISK_COLORS[level] || '#e5e7eb';
-}
-
-// ── Elevation‑based color gradient (smooth terrain mode) ──
-const ELEVATION_STOPS = [
-  '#1a6b3c', // 0.0  deep green
-  '#2d9e5f', // 0.2
-  '#8db84a', // 0.4
-  '#f0e528', // 0.6  yellow
-  '#e07b20', // 0.8  orange
-  '#8b1a1a', // 1.0  dark red
+// ── Classic rainbow DEM palette (blue low → red high, like the reference image) ──
+const ELEV_RAMP = [
+  new THREE.Color('#0a00aa'), // deep blue  (lowest)
+  new THREE.Color('#0055ff'), // blue
+  new THREE.Color('#00aaff'), // cyan
+  new THREE.Color('#00e8aa'), // teal-green
+  new THREE.Color('#88ff00'), // yellow-green
+  new THREE.Color('#ffee00'), // yellow
+  new THREE.Color('#ff8800'), // orange
+  new THREE.Color('#ff2200'), // orange-red
+  new THREE.Color('#cc0000'), // deep red   (highest)
 ];
 
 function getElevationColor(t) {
-  const color = new THREE.Color();
-  if (t < 0.2) color.lerpColors(
-    new THREE.Color('#1a6b3c'), new THREE.Color('#2d9e5f'), t/0.2)
-  else if (t < 0.4) color.lerpColors(
-    new THREE.Color('#2d9e5f'), new THREE.Color('#8db84a'), (t-0.2)/0.2)
-  else if (t < 0.6) color.lerpColors(
-    new THREE.Color('#8db84a'), new THREE.Color('#f0e528'), (t-0.4)/0.2)
-  else if (t < 0.8) color.lerpColors(
-    new THREE.Color('#f0e528'), new THREE.Color('#e07b20'), (t-0.6)/0.2)
-  else color.lerpColors(
-    new THREE.Color('#e07b20'), new THREE.Color('#8b1a1a'), (t-0.8)/0.2)
-  return color;
+  const clamped = Math.max(0, Math.min(1, t));
+  const scaled  = clamped * (ELEV_RAMP.length - 1);
+  const lo      = Math.floor(scaled);
+  const hi      = Math.min(lo + 1, ELEV_RAMP.length - 1);
+  const c       = new THREE.Color();
+  c.lerpColors(ELEV_RAMP[lo], ELEV_RAMP[hi], scaled - lo);
+  return c;
 }
 
-// ════════════════════════════════════════════
-//  Bar‑Chart Mode — instanced for performance
-// ════════════════════════════════════════════
+// Risk highlight colours (vivid, used when filter is active)
+const RISK_HIGHLIGHT = {
+  NORMAL:         new THREE.Color('#22c55e'),
+  FIRE_RISK:      new THREE.Color('#ef4444'),
+  LANDSLIDE_RISK: new THREE.Color('#f97316'),
+  URBAN_ZONE:     new THREE.Color('#60a5fa'),
+};
+const DIM_COLOR  = new THREE.Color('#1e293b');
+const ROAD_COLOR = new THREE.Color('#3b82f6'); // blue road ribbon
 
-function BarChartScene({ cells, centerX, centerY, onHover, onUnhover }) {
-  const meshRef = useRef();
-  const tempObj = useMemo(() => new THREE.Object3D(), []);
-  const colorArray = useMemo(() => new Float32Array(cells.length * 3), [cells.length]);
+// ════════════════════════════════════════════════════════
+//  Build shared grid data (used by both terrain and road)
+// ════════════════════════════════════════════════════════
+function buildGridData(allCells) {
+  const gridXs = allCells.map(c => c.gridX);
+  const gridYs = allCells.map(c => c.gridY);
+  const minGX  = Math.min(...gridXs), maxGX = Math.max(...gridXs);
+  const minGY  = Math.min(...gridYs), maxGY = Math.max(...gridYs);
+  const cols   = maxGX - minGX + 1;
+  const rows   = maxGY - minGY + 1;
 
-  // Pointer events per‑instance
-  const handlePointer = useCallback(
-    (e) => {
-      e.stopPropagation();
-      const idx = e.instanceId;
-      if (idx != null && idx < cells.length) {
-        onHover(cells[idx], e);
+  // Separate road (Building) cells from terrain cells
+  const terrainCells = allCells.filter(c => c.dominantType !== 'Building');
+  const roadCells    = allCells.filter(c => c.dominantType === 'Building');
+
+  // Height + cell reference grids — only from terrain cells
+  const heightGrid = Array(rows).fill(null).map(() => Array(cols).fill(null));
+  const cellGrid   = Array(rows).fill(null).map(() => Array(cols).fill(null));
+  const isRoad     = Array(rows).fill(null).map(() => Array(cols).fill(false));
+
+  const allTerrainHeights = terrainCells.map(c => c.avgHeight);
+  const globalMin = Math.min(...allTerrainHeights);
+  const globalMax = Math.max(...allTerrainHeights);
+  const globalMid = (globalMin + globalMax) / 2;
+
+  terrainCells.forEach(c => {
+    const col = c.gridX - minGX;
+    const row = c.gridY - minGY;
+    heightGrid[row][col] = c.avgHeight;
+    cellGrid[row][col]   = c;
+  });
+
+  // Mark road positions
+  roadCells.forEach(c => {
+    const col = c.gridX - minGX;
+    const row = c.gridY - minGY;
+    isRoad[row][col] = true;
+  });
+
+  // Fill nulls (including road positions) with neighbour interpolation then mid
+  const interpolate = (r, c) => {
+    const neighbours = [
+      r > 0      && heightGrid[r-1][c],
+      r < rows-1 && heightGrid[r+1][c],
+      c > 0      && heightGrid[r][c-1],
+      c < cols-1 && heightGrid[r][c+1],
+    ].filter(v => v !== null && v !== false);
+    return neighbours.length > 0
+      ? neighbours.reduce((a, b) => a + b, 0) / neighbours.length
+      : globalMid;
+  };
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (heightGrid[r][c] === null) {
+        heightGrid[r][c] = interpolate(r, c);
       }
-    },
-    [cells, onHover]
-  );
+    }
+  }
 
-  return (
-    <instancedMesh
-      ref={(ref) => {
-        meshRef.current = ref;
-        if (!ref) return;
-        const col = new THREE.Color();
-        cells.forEach((cell, i) => {
-          const h = Math.max(cell.canopyHeight * 0.1, 0.1);
-          tempObj.position.set(cell.gridX - centerX, h / 2, cell.gridY - centerY);
-          tempObj.scale.set(0.9, h, 0.9);
-          tempObj.updateMatrix();
-          ref.setMatrixAt(i, tempObj.matrix);
-          col.set(riskColor(cell.riskLevel));
-          colorArray[i * 3] = col.r;
-          colorArray[i * 3 + 1] = col.g;
-          colorArray[i * 3 + 2] = col.b;
-        });
-        ref.instanceMatrix.needsUpdate = true;
-        ref.geometry.setAttribute(
-          'color',
-          new THREE.InstancedBufferAttribute(colorArray, 3)
-        );
-      }}
-      args={[undefined, undefined, cells.length]}
-      onPointerMove={handlePointer}
-      onPointerOut={(e) => {
-        e.stopPropagation();
-        onUnhover();
-      }}
-    >
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial vertexColors toneMapped={false} />
-    </instancedMesh>
-  );
+  return { heightGrid, cellGrid, isRoad, roadCells, minGX, minGY, cols, rows, globalMin, globalMax };
 }
 
-// ════════════════════════════════════════════
-//  Smooth Terrain Mode — elevation‑colored mesh
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  Smooth terrain mesh (excludes road cells, smooth surface)
+// ════════════════════════════════════════════════════════
+function SmoothTerrainMesh({ gridData, filteredCells }) {
+  const { heightGrid, cellGrid, isRoad, cols, rows, globalMin, globalMax } = gridData;
 
-function SmoothTerrainScene({ cells }) {
   const geometry = useMemo(() => {
-    let minGridX = Infinity, maxGridX = -Infinity;
-    let minGridY = Infinity, maxGridY = -Infinity;
-    
-    cells.forEach(c => {
-      if (c.gridX < minGridX) minGridX = c.gridX;
-      if (c.gridX > maxGridX) maxGridX = c.gridX;
-      if (c.gridY < minGridY) minGridY = c.gridY;
-      if (c.gridY > maxGridY) maxGridY = c.gridY;
-    });
+    const isFilterActive = filteredCells !== null;
+    const filteredSet    = new Set();
+    if (isFilterActive && filteredCells) {
+      filteredCells.forEach(c => filteredSet.add(`${c.gridX},${c.gridY}`));
+    }
 
-    const gridCols = maxGridX - minGridX + 1;
-    const gridRows = maxGridY - minGridY + 1;
+    const positions = new Float32Array(rows * cols * 3);
+    const colors    = new Float32Array(rows * cols * 3);
 
-    const map = new Map();
-    let globalMinHeight = Infinity, globalMaxHeight = -Infinity;
-    
-    cells.forEach(c => {
-      const h = c.avgHeight;
-      map.set(`${c.gridX},${c.gridY}`, { avgHeight: h, riskLevel: c.riskLevel });
-      if (h < globalMinHeight) globalMinHeight = h;
-      if (h > globalMaxHeight) globalMaxHeight = h;
-    });
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const idx = (row * cols + col) * 3;
+        const h   = heightGrid[row][col];
+        const y   = (h - globalMin) * HEIGHT_SCALE;
 
-    if (globalMinHeight === Infinity) { globalMinHeight = 0; globalMaxHeight = 1; }
-    if (globalMaxHeight === globalMinHeight) globalMaxHeight += 1;
+        positions[idx]   = col - cols / 2;
+        positions[idx+1] = y;
+        positions[idx+2] = row - rows / 2;
 
-    const positions = [];
-    const colors = [];
-    const indices = [];
+        const cell = cellGrid[row][col];
+        const key  = cell ? `${cell.gridX},${cell.gridY}` : null;
 
-    for (let row = 0; row < gridRows; row++) {
-      for (let col = 0; col < gridCols; col++) {
-        const x = col - gridCols / 2;
-        const z = row - gridRows / 2;
-        
-        const key = `${minGridX + col},${minGridY + row}`;
-        const cellData = map.get(key);
-        const height = cellData ? cellData.avgHeight : globalMinHeight;
-        
-        const y = (height - globalMinHeight) * 0.05;
-        positions.push(x, y, z);
-        
-        const t = (height - globalMinHeight) / (globalMaxHeight - globalMinHeight);
-        const color = getElevationColor(t);
-        colors.push(color.r, color.g, color.b);
+        let color;
+        if (isFilterActive) {
+          if (key && filteredSet.has(key)) {
+            color = RISK_HIGHLIGHT[cell.riskLevel] || RISK_HIGHLIGHT.NORMAL;
+          } else {
+            color = DIM_COLOR;
+          }
+        } else {
+          const t = (h - globalMin) / (globalMax - globalMin || 1);
+          color = getElevationColor(t);
+        }
+
+        colors[idx]   = color.r;
+        colors[idx+1] = color.g;
+        colors[idx+2] = color.b;
       }
     }
 
-    for (let row = 0; row < gridRows - 1; row++) {
-      for (let col = 0; col < gridCols - 1; col++) {
-        const topLeft = row * gridCols + col;
-        const topRight = row * gridCols + (col + 1);
-        const bottomLeft = (row + 1) * gridCols + col;
-        const bottomRight = (row + 1) * gridCols + (col + 1);
-        
-        indices.push(topLeft, bottomLeft, topRight);
-        indices.push(topRight, bottomLeft, bottomRight);
+    const indices = [];
+    for (let row = 0; row < rows - 1; row++) {
+      for (let col = 0; col < cols - 1; col++) {
+        const tl = row * cols + col;
+        const tr = row * cols + col + 1;
+        const bl = (row + 1) * cols + col;
+        const br = (row + 1) * cols + col + 1;
+        indices.push(tl, bl, tr);
+        indices.push(tr, bl, br);
       }
     }
 
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-
     return geo;
-  }, [cells]);
+  }, [gridData, filteredCells]);
 
   return (
     <mesh geometry={geometry}>
@@ -179,227 +175,164 @@ function SmoothTerrainScene({ cells }) {
   );
 }
 
-// ════════════════════════════════════════════
-//  Scene wrapper (lights, controls, ground)
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  Road ribbon — flat quads sitting just ABOVE the terrain
+// ════════════════════════════════════════════════════════
+function RoadRibbon({ gridData }) {
+  const { heightGrid, roadCells, minGX, minGY, cols, rows, globalMin } = gridData;
 
-function SceneContent({ cells, mode, onHover, onUnhover }) {
+  const mesh = useMemo(() => {
+    if (!roadCells || roadCells.length === 0) return null;
+
+    const verts  = [];
+    const idxArr = [];
+    const clrs   = [];
+    const LIFT   = 0.08; // raise road above terrain surface
+
+    roadCells.forEach(cell => {
+      const col  = cell.gridX - minGX;
+      const row  = cell.gridY - minGY;
+      const h    = heightGrid[row][col];
+      const y    = (h - globalMin) * HEIGHT_SCALE + LIFT;
+      const cx   = col - cols / 2;
+      const cz   = row - rows / 2;
+      const half = 0.45;
+
+      const base = verts.length / 3;
+      // 4 corners of a flat unit quad
+      verts.push(cx - half, y, cz - half);
+      verts.push(cx + half, y, cz - half);
+      verts.push(cx + half, y, cz + half);
+      verts.push(cx - half, y, cz + half);
+
+      idxArr.push(base, base+1, base+2, base, base+2, base+3);
+      for (let i = 0; i < 4; i++) {
+        clrs.push(ROAD_COLOR.r, ROAD_COLOR.g, ROAD_COLOR.b);
+      }
+    });
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(clrs), 3));
+    geo.setIndex(idxArr);
+    geo.computeVertexNormals();
+    return geo;
+  }, [gridData]);
+
+  if (!mesh) return null;
+
+  return (
+    <mesh geometry={mesh}>
+      <meshLambertMaterial vertexColors side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+//  Scene root
+// ════════════════════════════════════════════════════════
+function SceneContent({ allCells, filteredCells }) {
   const { camera } = useThree();
 
-  const bounds = useMemo(() => {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const c of cells) {
-      if (c.gridX < minX) minX = c.gridX;
-      if (c.gridX > maxX) maxX = c.gridX;
-      if (c.gridY < minY) minY = c.gridY;
-      if (c.gridY > maxY) maxY = c.gridY;
-    }
-    return { minX, maxX, minY, maxY };
-  }, [cells]);
-
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const gridData = useMemo(() => buildGridData(allCells), [allCells]);
 
   useEffect(() => {
-    if (mode === 'terrain') {
-      const gridCols = bounds.maxX - bounds.minX + 1;
-      const gridRows = bounds.maxY - bounds.minY + 1;
-      camera.position.set(gridCols / 2, gridRows * 0.8, gridRows * 1.2);
-    } else {
-      camera.position.set(0, 30, 50);
-    }
+    const { cols, rows } = gridData;
+    camera.position.set(cols * 0.4, rows * 1.0, rows * 1.5);
     camera.lookAt(0, 0, 0);
-  }, [mode, bounds, camera]);
+  }, [gridData, camera]);
 
   return (
     <>
-      {mode === 'terrain' ? (
-        <>
-          <ambientLight intensity={0.5} />
-          <directionalLight position={[20, 50, 20]} intensity={1.5} />
-        </>
-      ) : (
-        <>
-          <ambientLight intensity={0.4} />
-          <directionalLight position={[50, 100, 50]} intensity={1.2} castShadow />
-          <directionalLight position={[-20, 30, -10]} intensity={0.4} />
-        </>
-      )}
-
-      <OrbitControls
-        enablePan
-        enableZoom
-        enableRotate
-        minDistance={5}
-        maxDistance={200}
-      />
-
-      {/* Subtle ground grid */}
-      <gridHelper args={[200, 200, '#1e293b', '#1e293b']} position={[0, -0.01, 0]} />
-
-      {mode === 'bar' ? (
-        <BarChartScene
-          cells={cells}
-          centerX={centerX}
-          centerY={centerY}
-          onHover={onHover}
-          onUnhover={onUnhover}
-        />
-      ) : (
-        <SmoothTerrainScene cells={cells} />
-      )}
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[40, 100, 40]}  intensity={1.8} />
+      <directionalLight position={[-30, 60, -30]} intensity={0.4} />
+      <hemisphereLight skyColor="#1e3a5f" groundColor="#0a0a1a" intensity={0.35} />
+      <OrbitControls enablePan enableZoom enableRotate minDistance={3} maxDistance={500} />
+      <gridHelper args={[400, 400, '#0d1b2a', '#0d1b2a']} position={[0, -0.05, 0]} />
+      <SmoothTerrainMesh gridData={gridData} filteredCells={filteredCells} />
+      <RoadRibbon gridData={gridData} />
     </>
   );
 }
 
-// ════════════════════════════════════════════
-//  Legend components
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  Legend
+// ════════════════════════════════════════════════════════
+const ELEV_STOPS_CSS = [
+  '#0a00aa','#0055ff','#00aaff','#00e8aa',
+  '#88ff00','#ffee00','#ff8800','#ff2200','#cc0000',
+];
 
-function RiskLegend() {
+function TerrainLegend({ filterActive }) {
   return (
-    <div className="flex flex-wrap gap-4 items-center justify-center">
-      {Object.entries(RISK_COLORS).map(([key, color]) => (
-        <div key={key} className="flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-sm" style={{ backgroundColor: color }} />
-          <span className="text-sm text-slate-300 font-medium">
-            {key
-              .replace(/_/g, ' ')
-              .replace(/\b\w/g, (c) => c.toUpperCase())}
-          </span>
+    <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center">
+      {/* Elevation ramp */}
+      <div className="flex items-center gap-2">
+        <div className="relative w-28 h-3.5 rounded-sm overflow-hidden">
+          <div
+            className="absolute inset-0"
+            style={{ background: `linear-gradient(to right, ${ELEV_STOPS_CSS.join(', ')})` }}
+          />
         </div>
-      ))}
-    </div>
-  );
-}
-
-function ElevationLegend() {
-  const gradient = ELEVATION_STOPS.join(', ');
-  return (
-    <div className="flex flex-col items-center gap-1 w-full max-w-md mx-auto">
-      <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Elevation</span>
-      <div
-        className="w-full h-4 rounded-sm"
-        style={{ background: `linear-gradient(to right, ${gradient})` }}
-      />
-      <div className="flex justify-between w-full">
-        <span className="text-xs text-slate-400">Low</span>
-        <span className="text-xs text-slate-400">High</span>
+        <span className="text-xs text-slate-300">Elevation (Low → High)</span>
       </div>
+
+      <div className="w-px h-4 bg-slate-600" />
+
+      {/* Road */}
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-2.5 rounded-sm bg-[#3b82f6]" />
+        <span className="text-xs text-blue-300 font-semibold">Road</span>
+      </div>
+
+      {filterActive && (
+        <>
+          <div className="w-px h-4 bg-slate-600" />
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-sm bg-[#f97316]" />
+            <span className="text-xs text-orange-300 font-semibold">Highlighted (filtered)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-sm bg-[#1e293b]" />
+            <span className="text-xs text-slate-400">Outside filter (dimmed)</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-// ════════════════════════════════════════════
-//  Main component
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+//  Main export
+// ════════════════════════════════════════════════════════
+export default function TerrainDEM({ cells, filteredCells, hideControls = false }) {
+  const filterActive = filteredCells !== null;
 
-export default function TerrainDEM({ cells, filteredCells }) {
-  const activeCells = filteredCells !== null ? filteredCells : cells;
-
-  const [mode, setMode] = useState('bar');
-  const [tooltip, setTooltip] = useState(null);
-  const containerRef = useRef(null);
-
-  const handleHover = useCallback((cell, e) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setTooltip({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      data: cell,
-    });
-  }, []);
-
-  const handleUnhover = useCallback(() => setTooltip(null), []);
-
-  // ── Empty state ──
-  if (!activeCells || activeCells.length === 0) {
+  if (!cells || cells.length === 0) {
     return (
-      <div
-        className="w-full rounded-lg flex items-center justify-center"
-        style={{ height: 500, background: '#0f172a' }}
-      >
+      <div className="w-full h-full flex items-center justify-center" style={{ background: '#0a0f1e' }}>
         <p className="text-slate-400 text-lg">Process a file to see 3D terrain</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full rounded-lg overflow-hidden" style={{ background: '#0f172a' }}>
-      {/* ── Controls row ── */}
-      <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-3">
-        {/* Mode toggle */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMode('bar')}
-            className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
-              mode === 'bar'
-                ? 'bg-blue-600 text-white'
-                : 'border border-slate-500 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            Bar Chart
-          </button>
-          <button
-            onClick={() => setMode('terrain')}
-            className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
-              mode === 'terrain'
-                ? 'bg-blue-600 text-white'
-                : 'border border-slate-500 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            Smooth Terrain
-          </button>
-        </div>
-
-        {/* Height scale info */}
-        <span className="text-xs text-slate-400 font-medium">Height scale: 1 unit = 10m</span>
-      </div>
-
-      {/* ── 3D Canvas ── */}
-      <div ref={containerRef} className="relative">
+    <div className="w-full h-full relative" style={{ background: '#0a0f1e' }}>
+      <div className="absolute inset-0">
         <Canvas
-          camera={{ position: [0, 30, 50], fov: 60 }}
-          style={{ width: '100%', height: '500px', background: '#0f172a' }}
+          camera={{ position: [0, 30, 50], fov: 55 }}
+          style={{ width: '100%', height: '100%', background: '#0a0f1e' }}
         >
-          <SceneContent
-            cells={activeCells}
-            mode={mode}
-            onHover={handleHover}
-            onUnhover={handleUnhover}
-          />
+          <SceneContent allCells={cells} filteredCells={filteredCells} />
         </Canvas>
-
-        {/* ── Tooltip overlay (bar mode only) ── */}
-        {tooltip && mode === 'bar' && (
-          <div
-            className="absolute bg-slate-800 border border-slate-600 shadow-xl rounded-md p-3 text-sm z-50 pointer-events-none"
-            style={{ top: tooltip.y + 14, left: tooltip.x + 14, minWidth: 180 }}
-          >
-            <div className="font-bold text-white border-b border-slate-600 pb-1 mb-1">
-              Cell ({tooltip.data.gridX}, {tooltip.data.gridY})
-            </div>
-            <div className="text-slate-300">
-              <span className="font-semibold text-slate-100">Risk:</span> {tooltip.data.riskLevel}
-            </div>
-            <div className="text-slate-300">
-              <span className="font-semibold text-slate-100">Type:</span> {tooltip.data.dominantType}
-            </div>
-            <div className="text-slate-300">
-              <span className="font-semibold text-slate-100">Canopy:</span> {tooltip.data.canopyHeight.toFixed(2)} m
-            </div>
-            <div className="text-slate-300">
-              <span className="font-semibold text-slate-100">Points:</span> {tooltip.data.pointDensity}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* ── Legend ── */}
-      <div className="px-4 py-3 border-t border-slate-700">
-        {mode === 'bar' ? <RiskLegend /> : <ElevationLegend />}
-      </div>
+      {!hideControls && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-slate-900/85 backdrop-blur-md rounded-xl border border-slate-700/50 px-5 py-3 pointer-events-none">
+          <TerrainLegend filterActive={filterActive} />
+        </div>
+      )}
     </div>
   );
 }
