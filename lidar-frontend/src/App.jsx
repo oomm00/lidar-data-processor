@@ -171,7 +171,7 @@ export default function App() {
             </h2>
             {result && result.insights && (
               <div className="mb-6">
-                <InsightsPanel insights={result.insights} />
+                <InsightsPanel insights={result.insights} recommendations={result.recommendations} />
               </div>
             )}
             <SummaryPanel result={result} />

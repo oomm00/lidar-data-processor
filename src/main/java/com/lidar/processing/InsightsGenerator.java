@@ -240,6 +240,167 @@ public class InsightsGenerator {
     }
 
     /**
+     * Generates a list of action recommendations based on analyzed terrain data.
+     */
+    public List<String> generateRecommendations(Map<GridCoordinate, GridCell> grid, double resolution) {
+        List<String> recommendations = new ArrayList<>();
+        if (grid.isEmpty()) {
+            return recommendations;
+        }
+
+        int totalCells = grid.size();
+
+        // 1. Fire Risk Recommendation
+        long fireCellsCount = grid.values().stream()
+                .filter(c -> "FIRE_RISK".equals(c.getRiskLevel()))
+                .count();
+        double firePercent = (fireCellsCount * 100.0) / totalCells;
+        if (firePercent > 10.0) {
+            List<Map.Entry<GridCoordinate, GridCell>> fireCells = grid.entrySet().stream()
+                    .filter(e -> "FIRE_RISK".equals(e.getValue().getRiskLevel()))
+                    .collect(Collectors.toList());
+            Centroid centroid = computeCentroid(fireCells);
+            recommendations.add(String.format("Recommend establishing firebreaks at (%.0f, %.0f) — clear vegetation in a 15m buffer zone around high-density fire risk cells to reduce spread potential.",
+                    centroid.x, centroid.y));
+        }
+
+        // 2. Cascade Risk Recommendation
+        List<Map.Entry<GridCoordinate, GridCell>> cascadeCells = grid.entrySet().stream()
+                .filter(e -> e.getValue().isCascadeRisk())
+                .collect(Collectors.toList());
+        if (!cascadeCells.isEmpty()) {
+            Centroid centroid = computeCentroid(cascadeCells);
+            recommendations.add(String.format("Recommend slope stabilization (retaining walls / terracing / reforestation) at (%.0f, %.0f) — %d cells in the debris flow path. Prioritize if any infrastructure exists downstream.",
+                    centroid.x, centroid.y, cascadeCells.size()));
+        }
+
+        // 3. Steepest Terrain Recommendation
+        Optional<Map.Entry<GridCoordinate, GridCell>> steepest = grid.entrySet().stream()
+                .max(Comparator.comparingDouble(e -> e.getValue().getMaxSlope()));
+        if (steepest.isPresent() && steepest.get().getValue().getMaxSlope() > 60.0) {
+            GridCell cell = steepest.get().getValue();
+            recommendations.add(String.format("Cell (%d,%d) at %.1f degrees slope is likely unsurveyable/unstable — recommend ground-truth verification or exclude from development planning entirely.",
+                    cell.getGridX(), cell.getGridY(), cell.getMaxSlope()));
+        }
+
+        // 4. Land Use Recommendations
+        for (String bestUse : Arrays.asList("CONSTRUCTION", "AGRICULTURE", "SOLAR")) {
+            long count = grid.values().stream()
+                    .filter(c -> bestUse.equals(c.getBestUse()))
+                    .count();
+            double percentage = (count * 100.0) / totalCells;
+            List<GridCoordinate> cluster = findLargestCluster(grid, bestUse);
+            if (!cluster.isEmpty()) {
+                Centroid centroid = computeCentroidOfCoords(cluster);
+                double area = cluster.size() * resolution * resolution;
+                recommendations.add(String.format("Of the %.1f%% suitable for %s, the highest-scoring contiguous cluster is at (%.0f, %.0f), spanning %d cells (~%.0f sq meters) — recommended as priority site for %s.",
+                        percentage, bestUse, centroid.x, centroid.y, cluster.size(), area, bestUse));
+            }
+        }
+
+        // 5. Drainage Recommendation
+        List<Integer> accumulationValues = grid.values().stream()
+                .map(GridCell::getFlowAccumulation)
+                .sorted(Comparator.reverseOrder())
+                .collect(Collectors.toList());
+        int thresholdIndex = (int) (accumulationValues.size() * 0.1);
+        int threshold = accumulationValues.isEmpty() ? Integer.MAX_VALUE 
+                : accumulationValues.get(Math.min(thresholdIndex, accumulationValues.size() - 1));
+
+        long channelCount = grid.values().stream()
+                .filter(c -> c.getFlowAccumulation() >= threshold && c.getFlowAccumulation() >= 5)
+                .count();
+        if (channelCount > 0) {
+            recommendations.add(String.format("%d drainage channels identified — recommend these be preserved/ unobstructed in any development plan; building across these paths risks flooding.",
+                    channelCount));
+        }
+
+        // 6. Overall Recommendation
+        long fireRiskCount = grid.values().stream()
+                .filter(c -> "FIRE_RISK".equals(c.getRiskLevel()))
+                .count();
+        long landslideRiskCount = grid.values().stream()
+                .filter(c -> "LANDSLIDE_RISK".equals(c.getRiskLevel()))
+                .count();
+        long urbanZoneCount = grid.values().stream()
+                .filter(c -> "URBAN_ZONE".equals(c.getRiskLevel()))
+                .count();
+
+        double overallRiskScore = ((fireRiskCount * 0.6 + landslideRiskCount * 1.0 + urbanZoneCount * 0.4)
+                / totalCells) * 100;
+
+        String closingReco;
+        if (overallRiskScore < 25.0) {
+            closingReco = "Site is generally suitable for development with standard precautions.";
+        } else if (overallRiskScore < 50.0) {
+            closingReco = "Site requires risk mitigation in flagged zones before development; remainder is viable.";
+        } else {
+            closingReco = "Site is NOT recommended for development without major engineering intervention. Recommend designating as protected/monitoring zone.";
+        }
+        recommendations.add(closingReco);
+
+        return recommendations;
+    }
+
+    /**
+     * BFS logic to group adjacent cells with the same bestUse and return the largest cluster.
+     */
+    private List<GridCoordinate> findLargestCluster(Map<GridCoordinate, GridCell> grid, String targetUse) {
+        Set<GridCoordinate> visited = new HashSet<>();
+        List<GridCoordinate> largestCluster = new ArrayList<>();
+        int[][] directions = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+
+        for (Map.Entry<GridCoordinate, GridCell> entry : grid.entrySet()) {
+            GridCoordinate start = entry.getKey();
+            if (visited.contains(start) || !targetUse.equals(entry.getValue().getBestUse())) {
+                continue;
+            }
+
+            List<GridCoordinate> currentCluster = new ArrayList<>();
+            Queue<GridCoordinate> queue = new ArrayDeque<>();
+            queue.add(start);
+            visited.add(start);
+
+            while (!queue.isEmpty()) {
+                GridCoordinate current = queue.poll();
+                currentCluster.add(current);
+
+                for (int[] dir : directions) {
+                    GridCoordinate neighbor = new GridCoordinate(
+                            current.x() + dir[0],
+                            current.y() + dir[1]
+                    );
+                    if (!visited.contains(neighbor) && grid.containsKey(neighbor)) {
+                        GridCell neighborCell = grid.get(neighbor);
+                        if (targetUse.equals(neighborCell.getBestUse())) {
+                            visited.add(neighbor);
+                            queue.add(neighbor);
+                        }
+                    }
+                }
+            }
+
+            if (currentCluster.size() > largestCluster.size()) {
+                largestCluster = currentCluster;
+            }
+        }
+        return largestCluster;
+    }
+
+    private Centroid computeCentroidOfCoords(List<GridCoordinate> coords) {
+        if (coords.isEmpty()) {
+            return new Centroid(0, 0);
+        }
+        double sumX = 0;
+        double sumY = 0;
+        for (GridCoordinate coord : coords) {
+            sumX += coord.x();
+            sumY += coord.y();
+        }
+        return new Centroid(sumX / coords.size(), sumY / coords.size());
+    }
+
+    /**
      * Simple record to hold centroid coordinates.
      */
     private record Centroid(double x, double y) {

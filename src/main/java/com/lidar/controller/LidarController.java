@@ -41,6 +41,7 @@ public class LidarController {
             int landslideZones,
             int urbanZones,
             List<String> insights,
+            List<String> recommendations,
             String outputFile) {
     }
 
@@ -90,6 +91,7 @@ public class LidarController {
 
             // 5.5. Generate human-readable insights
             List<String> insights = insightsGenerator.generateInsights(grid, resolution);
+            List<String> recommendations = insightsGenerator.generateRecommendations(grid, resolution);
 
             // 6. Export output CSV alongside the temp input
             Path outputPath = tempInput.resolveSibling("output.csv");
@@ -107,6 +109,7 @@ public class LidarController {
                     stats.landslideZones(),
                     stats.urbanZones(),
                     insights,
+                    recommendations,
                     outputPath.toString());
             return ResponseEntity.ok(result);
 

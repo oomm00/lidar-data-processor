@@ -347,4 +347,133 @@ class InsightsGeneratorTest {
                 s.contains("FIRE_RISK") && s.contains("(15, 25)")),
                 "Should report correct centroid for risk zone");
     }
+
+    @Test
+    void testFireRiskRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        // Create 12 fire risk cells (12% of 100 total cells)
+        for (int i = 0; i < 12; i++) {
+            GridCell cell = new GridCell(i, 0);
+            cell.addPoint(450.0, 2); // vegetation
+            cell.addPoint(460.0, 2);
+            cell.addPoint(470.0, 2); // makes it FIRE_RISK
+            grid.put(new GridCoordinate(i, 0), cell);
+        }
+        
+        // Add 88 normal cells
+        for (int i = 12; i < 100; i++) {
+            GridCell cell = createCell(i, 0, 100.0);
+            grid.put(new GridCoordinate(i, 0), cell);
+        }
+
+        List<String> recommendations = generator.generateRecommendations(grid, 1.0);
+
+        assertTrue(recommendations.stream().anyMatch(s -> 
+                s.contains("establishing firebreaks") && s.contains("buffer zone")),
+                "Should recommend establishing firebreaks with buffer zone");
+    }
+
+    @Test
+    void testCascadeRiskRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        // Create cascade risk cells
+        for (int i = 0; i < 5; i++) {
+            GridCell cell = createCell(i, 0, 100.0);
+            cell.setCascadeRisk(true);
+            grid.put(new GridCoordinate(i, 0), cell);
+        }
+
+        List<String> recommendations = generator.generateRecommendations(grid, 1.0);
+
+        assertTrue(recommendations.stream().anyMatch(s -> 
+                s.contains("slope stabilization") && s.contains("debris flow path")),
+                "Should recommend slope stabilization for cascade risk cells");
+    }
+
+    @Test
+    void testSteepestSlopeRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        GridCell cell = createCell(0, 0, 100.0);
+        cell.setMaxSlope(65.0); // > 60 degrees
+        grid.put(new GridCoordinate(0, 0), cell);
+
+        List<String> recommendations = generator.generateRecommendations(grid, 1.0);
+
+        assertTrue(recommendations.stream().anyMatch(s -> 
+                s.contains("unsurveyable/unstable") && s.contains("ground-truth")),
+                "Should recommend ground-truth or exclusion for extremely steep cells");
+    }
+
+    @Test
+    void testLandUseClusterRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        // Create construction cells in a contiguous cluster of 4
+        // (0,0), (0,1), (1,0), (1,1)
+        int[][] coords = {{0,0}, {0,1}, {1,0}, {1,1}};
+        for (int[] coord : coords) {
+            GridCell cell = createCell(coord[0], coord[1], 100.0);
+            cell.setConstructionScore(90.0); // makes CONSTRUCTION bestUse
+            grid.put(new GridCoordinate(coord[0], coord[1]), cell);
+        }
+
+        List<String> recommendations = generator.generateRecommendations(grid, 1.0);
+
+        assertTrue(recommendations.stream().anyMatch(s -> 
+                s.contains("contiguous cluster") && s.contains("CONSTRUCTION")),
+                "Should recommend contiguous cluster priority site for land uses");
+    }
+
+    @Test
+    void testDrainageRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        // Create cells with high flow accumulation
+        for (int i = 0; i < 90; i++) {
+            GridCell cell = createCell(i, 0, 100.0);
+            cell.setFlowAccumulation(i + 1);
+            grid.put(new GridCoordinate(i, 0), cell);
+        }
+        for (int i = 90; i < 100; i++) {
+            GridCell cell = createCell(i, 0, 90.0);
+            cell.setFlowAccumulation(150 + i); // major channel
+            grid.put(new GridCoordinate(i, 0), cell);
+        }
+
+        List<String> recommendations = generator.generateRecommendations(grid, 1.0);
+
+        assertTrue(recommendations.stream().anyMatch(s -> 
+                s.contains("drainage channels identified") && s.contains("preserved")),
+                "Should recommend preserving drainage channels to prevent flooding");
+    }
+
+    @Test
+    void testOverallClosingRecommendation() {
+        Map<GridCoordinate, GridCell> grid = new HashMap<>();
+        
+        // 1. Low risk test
+        for (int i = 0; i < 10; i++) {
+            grid.put(new GridCoordinate(i, 0), createCell(i, 0, 100.0));
+        }
+        List<String> recsLow = generator.generateRecommendations(grid, 1.0);
+        assertTrue(recsLow.stream().anyMatch(s -> s.contains("generally suitable for development")),
+                "Should recommend standard precautions for low risk");
+
+        // 2. High risk test
+        Map<GridCoordinate, GridCell> gridHigh = new HashMap<>();
+        for (int i = 0; i < 60; i++) {
+            GridCell cell = createCell(i, 0, 100.0);
+            cell.setMaxSlope(40.0); // Trigger landslide risk
+            gridHigh.put(new GridCoordinate(i, 0), cell);
+        }
+        for (int i = 60; i < 100; i++) {
+            gridHigh.put(new GridCoordinate(i, 0), createCell(i, 0, 100.0));
+        }
+        List<String> recsHigh = generator.generateRecommendations(gridHigh, 1.0);
+        assertTrue(recsHigh.stream().anyMatch(s -> s.contains("NOT recommended for development")),
+                "Should advise against development for high risk");
+    }
 }
