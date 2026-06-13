@@ -44,10 +44,13 @@ class StatisticsSummarizerTest {
 
     @Test
     void highRiskZoneCountOnlyAboveThreshold() {
-        // canopy = 10.0 → NOT high risk (must be strictly > 10.0)
-        GridCell notRisk = cellWith(0, 0, 0.0, 10.0); // canopy = 10.0
-        // canopy = 10.1 → IS high risk
-        GridCell isRisk = cellWith(1, 0, 0.0, 10.1); // canopy = 10.1
+        // Create a cell that triggers LANDSLIDE_RISK via high canopy + ground dominance
+        GridCell notRisk = cellWith(0, 0, 0.0, 10.0); // canopy = 10.0, too low
+        
+        // Create a high-risk cell: canopy > 25 AND all ground points
+        GridCell isRisk = new GridCell(1, 0);
+        isRisk.addPoint(0.0, 1); // Ground point at elevation 0
+        isRisk.addPoint(30.0, 1); // Ground point at elevation 30 → canopy = 30
 
         Map<GridCoordinate, GridCell> grid = Map.of(
                 new GridCoordinate(0, 0), notRisk,

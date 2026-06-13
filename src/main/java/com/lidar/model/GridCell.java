@@ -15,6 +15,19 @@ public class GridCell {
     private int buildingPoints;
     private int rockPoints;
 
+    // Slope analysis fields
+    private double maxSlope = 0.0;
+    private String slopeDirection = "FLAT";
+
+    // Suitability scores (0-100, higher = better)
+    private double constructionScore = 0.0;
+    private double agricultureScore = 0.0;
+    private double solarScore = 0.0;
+
+    // Flow analysis fields
+    private int flowAccumulation = 1; // Default: each cell represents itself
+    private boolean cascadeRisk = false;
+
     public GridCell(int gridX, int gridY) {
         this.gridX = gridX;
         this.gridY = gridY;
@@ -28,10 +41,7 @@ public class GridCell {
         this.rockPoints = 0;
     }
 
-    /**
-     * Incrementally adds a point's Z value and type to this cell.
-     * On the first point, both minZ and maxZ are set to z.
-     */
+   
     public void addPoint(double z, int type) {
         if (pointCount == 0) {
             minZ = z;
@@ -117,6 +127,11 @@ public class GridCell {
             && getRockPercent() > 30.0) 
             return "LANDSLIDE_RISK";
         
+        // LANDSLIDE: steep slope with ground/rock dominance
+        if (maxSlope > 35.0 
+            && groundPercent + getRockPercent() > 50.0) 
+            return "LANDSLIDE_RISK";
+        
         return "NORMAL";
     }
 
@@ -125,7 +140,7 @@ public class GridCell {
         return (rockPoints * 100.0) / pointCount;
     }
 
-    // --- Field getters ---
+   
 
     public int getGridX() {
         return gridX;
@@ -165,5 +180,83 @@ public class GridCell {
 
     public int getRockPoints() {
         return rockPoints;
+    }
+
+    public double getMaxSlope() {
+        return maxSlope;
+    }
+
+    public void setMaxSlope(double maxSlope) {
+        this.maxSlope = maxSlope;
+    }
+
+    public String getSlopeDirection() {
+        return slopeDirection;
+    }
+
+    public void setSlopeDirection(String slopeDirection) {
+        this.slopeDirection = slopeDirection;
+    }
+
+    public double getConstructionScore() {
+        return constructionScore;
+    }
+
+    public void setConstructionScore(double constructionScore) {
+        this.constructionScore = constructionScore;
+    }
+
+    public double getAgricultureScore() {
+        return agricultureScore;
+    }
+
+    public void setAgricultureScore(double agricultureScore) {
+        this.agricultureScore = agricultureScore;
+    }
+
+    public double getSolarScore() {
+        return solarScore;
+    }
+
+    public void setSolarScore(double solarScore) {
+        this.solarScore = solarScore;
+    }
+
+    public int getFlowAccumulation() {
+        return flowAccumulation;
+    }
+
+    public void setFlowAccumulation(int flowAccumulation) {
+        this.flowAccumulation = flowAccumulation;
+    }
+
+    public boolean isCascadeRisk() {
+        return cascadeRisk;
+    }
+
+    public void setCascadeRisk(boolean cascadeRisk) {
+        this.cascadeRisk = cascadeRisk;
+    }
+
+    /**
+     * Returns the best land use for this cell based on suitability scores.
+     * @return "CONSTRUCTION", "AGRICULTURE", "SOLAR", or "UNSUITABLE"
+     */
+    public String getBestUse() {
+        double maxScore = Math.max(constructionScore, Math.max(agricultureScore, solarScore));
+        
+        // If all scores are below 30, area is unsuitable for any use
+        if (maxScore < 30.0) {
+            return "UNSUITABLE";
+        }
+        
+        // Return the use with highest score
+        if (maxScore == constructionScore) {
+            return "CONSTRUCTION";
+        } else if (maxScore == agricultureScore) {
+            return "AGRICULTURE";
+        } else {
+            return "SOLAR";
+        }
     }
 }

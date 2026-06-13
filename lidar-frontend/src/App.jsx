@@ -5,6 +5,7 @@ import FilterControls from './components/FilterControls';
 import TerrainDEM from './components/TerrainDEM';
 import UploadForm from './components/UploadForm';
 import LandingPage from './pages/LandingPage';
+import InsightsPanel from './components/InsightsPanel';
 
 export default function App() {
   const [started, setStarted] = useState(false);
@@ -37,7 +38,7 @@ export default function App() {
           .slice(1)
           .map((line) => {
             const p = line.split(',');
-            if (p.length < 15) return null;
+            if (p.length < 22) return null;
             return {
               gridX: parseInt(p[0], 10),
               gridY: parseInt(p[1], 10),
@@ -54,6 +55,23 @@ export default function App() {
               vegetationPercent: parseFloat(p[12]),
               builtPercent: parseFloat(p[13]),
               riskLevel: p[14],
+              maxSlope: parseFloat(p[15]),
+              slopeDirection: p[16],
+              constructionScore: parseFloat(p[17]),
+              agricultureScore: parseFloat(p[18]),
+              solarScore: parseFloat(p[19]),
+              bestUse: (() => {
+                const cScore = parseFloat(p[17]);
+                const aScore = parseFloat(p[18]);
+                const sScore = parseFloat(p[19]);
+                const max = Math.max(cScore, aScore, sScore);
+                if (max < 30.0) return 'UNSUITABLE';
+                if (max === cScore) return 'CONSTRUCTION';
+                if (max === aScore) return 'AGRICULTURE';
+                return 'SOLAR';
+              })(),
+              flowAccumulation: parseInt(p[20], 10),
+              cascadeRisk: p[21] === 'true',
             };
           })
           .filter(Boolean);
@@ -151,6 +169,11 @@ export default function App() {
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
               Analysis Results
             </h2>
+            {result && result.insights && (
+              <div className="mb-6">
+                <InsightsPanel insights={result.insights} />
+              </div>
+            )}
             <SummaryPanel result={result} />
           </section>
 

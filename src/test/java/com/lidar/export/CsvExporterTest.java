@@ -29,7 +29,7 @@ class CsvExporterTest {
         Path out = tmp.resolve("out.csv");
         exporter.export(Map.of(), out);
         List<String> lines = Files.readAllLines(out);
-        assertEquals("grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density,ground_points,vegetation_points,building_points,rock_points,dominant_type,vegetation_percent,built_percent,risk_level",
+        assertEquals("grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density,ground_points,vegetation_points,building_points,rock_points,dominant_type,vegetation_percent,built_percent,risk_level,max_slope,slope_direction,construction_score,agriculture_score,solar_score,flow_accumulation,cascade_risk",
                 lines.get(0));
     }
 
@@ -50,7 +50,7 @@ class CsvExporterTest {
 
         List<String> lines = Files.readAllLines(out);
         assertEquals(2, lines.size());
-        assertEquals("2,3,4.0000,8.0000,4.0000,6.0000,2,2,0,0,0,Ground,0.0000,0.0000,NORMAL", lines.get(1));
+        assertEquals("2,3,4.0000,8.0000,4.0000,6.0000,2,2,0,0,0,Ground,0.00,0.00,NORMAL,0.00,FLAT,0.00,0.00,0.00,1,false", lines.get(1));
     }
 
     @Test
@@ -60,11 +60,16 @@ class CsvExporterTest {
         exporter.export(Map.of(new GridCoordinate(0, 0), cell), out);
 
         String dataLine = Files.readAllLines(out).get(1);
-        // All double fields must have exactly 4 decimal places
+        // All double fields must have exactly 4 decimal places (excluding 2-decimal fields)
         String[] parts = dataLine.split(",");
-        for (int i : new int[]{2, 3, 4, 5, 12, 13}) {
+        for (int i : new int[]{2, 3, 4, 5}) {
             assertTrue(parts[i].matches("-?\\d+\\.\\d{4}"),
                     "Field " + i + " should have 4 decimal places: " + parts[i]);
+        }
+        // Slope and suitability scores have 2 decimal places
+        for (int i : new int[]{15, 17, 18, 19}) {
+            assertTrue(parts[i].matches("-?\\d+\\.\\d{2}"),
+                    "Field " + i + " should have 2 decimal places: " + parts[i]);
         }
     }
 

@@ -12,7 +12,7 @@ import java.util.Map;
 public class CsvExporter {
 
     private static final String HEADER =
-            "grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density,ground_points,vegetation_points,building_points,rock_points,dominant_type,vegetation_percent,built_percent,risk_level";
+            "grid_x,grid_y,min_height,max_height,canopy_height,avg_height,point_density,ground_points,vegetation_points,building_points,rock_points,dominant_type,vegetation_percent,built_percent,risk_level,max_slope,slope_direction,construction_score,agriculture_score,solar_score,flow_accumulation,cascade_risk";
 
     public void export(Map<GridCoordinate, GridCell> grid, Path outputPath) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(outputPath)) {
@@ -21,7 +21,7 @@ public class CsvExporter {
 
             for (Map.Entry<GridCoordinate, GridCell> entry : grid.entrySet()) {
                 GridCell cell = entry.getValue();
-                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%s,%.2f,%.2f,%s",
+                String line = String.format("%d,%d,%.4f,%.4f,%.4f,%.4f,%d,%d,%d,%d,%d,%s,%.2f,%.2f,%s,%.2f,%s,%.2f,%.2f,%.2f,%d,%s",
                         cell.getGridX(),
                         cell.getGridY(),
                         cell.getMinZ(),
@@ -36,7 +36,14 @@ public class CsvExporter {
                         cell.getDominantType(),
                         cell.getVegetationPercent(),
                         cell.getBuiltPercent(),
-                        cell.getRiskLevel()
+                        cell.getRiskLevel(),
+                        cell.getMaxSlope(),
+                        cell.getSlopeDirection(),
+                        cell.getConstructionScore(),
+                        cell.getAgricultureScore(),
+                        cell.getSolarScore(),
+                        cell.getFlowAccumulation(),
+                        cell.isCascadeRisk() ? "true" : "false"
                 );
                 writer.write(line);
                 writer.newLine();

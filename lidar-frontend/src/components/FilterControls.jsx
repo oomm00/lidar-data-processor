@@ -3,6 +3,8 @@ import { useState } from 'react';
 export default function FilterControls({ cells, onFilterChange }) {
   const [riskLevel, setRiskLevel] = useState('All');
   const [dominantType, setDominantType] = useState('All');
+  const [bestUse, setBestUse] = useState('All');
+  const [maxSlopeLimit, setMaxSlopeLimit] = useState(90);
   const [minCanopy, setMinCanopy] = useState(0);
   const [maxCanopy, setMaxCanopy] = useState(9000);
 
@@ -17,6 +19,12 @@ export default function FilterControls({ cells, onFilterChange }) {
       filtered = filtered.filter(c => c.dominantType === dominantType);
     }
 
+    if (bestUse !== 'All') {
+      filtered = filtered.filter(c => c.bestUse === bestUse);
+    }
+
+    filtered = filtered.filter(c => c.maxSlope <= maxSlopeLimit);
+
     filtered = filtered.filter(
       c => Number(c.canopyHeight) >= minCanopy && Number(c.canopyHeight) <= maxCanopy
     );
@@ -27,6 +35,8 @@ export default function FilterControls({ cells, onFilterChange }) {
   function resetFilters() {
     setRiskLevel('All');
     setDominantType('All');
+    setBestUse('All');
+    setMaxSlopeLimit(90);
     setMinCanopy(0);
     setMaxCanopy(9000);
     onFilterChange(null);
@@ -68,6 +78,42 @@ export default function FilterControls({ cells, onFilterChange }) {
           <option value="Building">Building</option>
           <option value="Rock">Rock</option>
         </select>
+      </div>
+
+      {/* Best Use Dropdown */}
+      <div className="flex flex-col">
+        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+          Best Use Suitability
+        </label>
+        <select
+          value={bestUse}
+          onChange={e => setBestUse(e.target.value)}
+          className="rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-200 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="All">All</option>
+          <option value="CONSTRUCTION">CONSTRUCTION</option>
+          <option value="AGRICULTURE">AGRICULTURE</option>
+          <option value="SOLAR">SOLAR</option>
+          <option value="UNSUITABLE">UNSUITABLE</option>
+        </select>
+      </div>
+
+      {/* Slope Range Slider */}
+      <div className="flex flex-col">
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Max Slope Limit
+          </label>
+          <span className="text-xs text-indigo-400 font-bold">{maxSlopeLimit}°</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="90"
+          value={maxSlopeLimit}
+          onChange={e => setMaxSlopeLimit(Number(e.target.value))}
+          className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+        />
       </div>
 
       {/* Canopy Height Range */}

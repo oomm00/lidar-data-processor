@@ -104,7 +104,7 @@ function buildGridData(allCells) {
 // ════════════════════════════════════════════════════════
 //  Smooth terrain mesh (excludes road cells, smooth surface)
 // ════════════════════════════════════════════════════════
-function SmoothTerrainMesh({ gridData, filteredCells }) {
+function SmoothTerrainMesh({ gridData, filteredCells, colorMode }) {
   const { heightGrid, cellGrid, isRoad, cols, rows, globalMin, globalMax } = gridData;
 
   const geometry = useMemo(() => {
@@ -131,15 +131,39 @@ function SmoothTerrainMesh({ gridData, filteredCells }) {
         const key  = cell ? `${cell.gridX},${cell.gridY}` : null;
 
         let color;
-        if (isFilterActive) {
-          if (key && filteredSet.has(key)) {
+        if (cell && (!isFilterActive || (key && filteredSet.has(key)))) {
+          if (colorMode === 'risk') {
             color = RISK_HIGHLIGHT[cell.riskLevel] || RISK_HIGHLIGHT.NORMAL;
+          } else if (colorMode === 'suitability') {
+            const suitColors = {
+              AGRICULTURE: new THREE.Color('#22c55e'),
+              CONSTRUCTION: new THREE.Color('#64748b'),
+              SOLAR: new THREE.Color('#eab308'),
+              UNSUITABLE: new THREE.Color('#ef4444')
+            };
+            color = suitColors[cell.bestUse] || suitColors.UNSUITABLE;
+          } else if (colorMode === 'slope') {
+            const tSlope = Math.min(1, cell.maxSlope / 45);
+            color = new THREE.Color().lerpColors(
+              new THREE.Color('#22c55e'), // green
+              new THREE.Color('#ef4444'), // red
+              tSlope
+            );
+          } else if (colorMode === 'drainage') {
+            const accum = cell.flowAccumulation || 1;
+            const tDrain = Math.min(1, Math.log10(accum) / 2);
+            color = new THREE.Color().lerpColors(
+              new THREE.Color('#e0f2fe'), // light blue
+              new THREE.Color('#1e3a8a'), // dark blue
+              tDrain
+            );
           } else {
-            color = DIM_COLOR;
+            // default elevation mode
+            const t = (h - globalMin) / (globalMax - globalMin || 1);
+            color = getElevationColor(t);
           }
         } else {
-          const t = (h - globalMin) / (globalMax - globalMin || 1);
-          color = getElevationColor(t);
+          color = DIM_COLOR;
         }
 
         colors[idx]   = color.r;
@@ -166,7 +190,7 @@ function SmoothTerrainMesh({ gridData, filteredCells }) {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
-  }, [gridData, filteredCells]);
+  }, [gridData, filteredCells, colorMode]);
 
   return (
     <mesh geometry={geometry}>
@@ -229,9 +253,68 @@ function RoadRibbon({ gridData }) {
 }
 
 // ════════════════════════════════════════════════════════
+//  Cascade Risk Outlines — wireframe boxes on cascade risk cells
+// ════════════════════════════════════════════════════════
+function CascadeRiskOutlines({ gridData, colorMode }) {
+  const { heightGrid, cellGrid, minGX, minGY, cols, rows, globalMin } = gridData;
+
+  const mesh = useMemo(() => {
+    if (colorMode !== 'drainage') return null;
+
+    const verts = [];
+    const idxArr = [];
+    const clrs = [];
+    const LIFT = 0.12;
+
+    let count = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = cellGrid[r][c];
+        if (cell && cell.cascadeRisk) {
+          const h = heightGrid[r][c];
+          const y = (h - globalMin) * HEIGHT_SCALE + LIFT;
+          const cx = c - cols / 2;
+          const cz = r - rows / 2;
+          const half = 0.49;
+
+          const base = verts.length / 3;
+          verts.push(cx - half, y, cz - half);
+          verts.push(cx + half, y, cz - half);
+          verts.push(cx + half, y, cz + half);
+          verts.push(cx - half, y, cz + half);
+
+          idxArr.push(base, base+1, base+2, base, base+2, base+3);
+          for (let i = 0; i < 4; i++) {
+            clrs.push(0.9, 0.1, 0.1); // vivid red
+          }
+          count++;
+        }
+      }
+    }
+
+    if (count === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(clrs), 3));
+    geo.setIndex(idxArr);
+    geo.computeVertexNormals();
+    return geo;
+  }, [gridData, colorMode]);
+
+  if (!mesh) return null;
+
+  return (
+    <mesh geometry={mesh}>
+      <meshBasicMaterial vertexColors wireframe={true} side={THREE.DoubleSide} transparent={true} opacity={0.9} toneMapped={false} />
+    </mesh>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 //  Scene root
 // ════════════════════════════════════════════════════════
-function SceneContent({ allCells, filteredCells }) {
+function SceneContent({ allCells, filteredCells, colorMode }) {
   const { camera } = useThree();
 
   const gridData = useMemo(() => buildGridData(allCells), [allCells]);
@@ -250,8 +333,9 @@ function SceneContent({ allCells, filteredCells }) {
       <hemisphereLight skyColor="#1e3a5f" groundColor="#0a0a1a" intensity={0.35} />
       <OrbitControls enablePan enableZoom enableRotate minDistance={3} maxDistance={500} />
       <gridHelper args={[400, 400, '#0d1b2a', '#0d1b2a']} position={[0, -0.05, 0]} />
-      <SmoothTerrainMesh gridData={gridData} filteredCells={filteredCells} />
+      <SmoothTerrainMesh gridData={gridData} filteredCells={filteredCells} colorMode={colorMode} />
       <RoadRibbon gridData={gridData} />
+      <CascadeRiskOutlines gridData={gridData} colorMode={colorMode} />
     </>
   );
 }
@@ -264,7 +348,83 @@ const ELEV_STOPS_CSS = [
   '#88ff00','#ffee00','#ff8800','#ff2200','#cc0000',
 ];
 
-function TerrainLegend({ filterActive }) {
+function TerrainLegend({ filterActive, colorMode }) {
+  if (colorMode === 'risk') {
+    return (
+      <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full bg-[#22c55e]" />
+          <span className="text-slate-300">Normal</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full bg-[#ef4444]" />
+          <span className="text-slate-300">Fire Risk</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full bg-[#f97316]" />
+          <span className="text-slate-300">Landslide Risk</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full bg-[#60a5fa]" />
+          <span className="text-slate-300">Urban Zone</span>
+        </div>
+        {filterActive && <span className="text-slate-500 font-medium">| Filter Active (others dimmed)</span>}
+      </div>
+    );
+  }
+
+  if (colorMode === 'suitability') {
+    return (
+      <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-sm bg-[#64748b]" />
+          <span className="text-slate-300">Construction</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-sm bg-[#22c55e]" />
+          <span className="text-slate-300">Agriculture</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-sm bg-[#eab308]" />
+          <span className="text-slate-300">Solar</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-sm bg-[#ef4444]" />
+          <span className="text-slate-300">Unsuitable</span>
+        </div>
+        {filterActive && <span className="text-slate-500 font-medium">| Filter Active (others dimmed)</span>}
+      </div>
+    );
+  }
+
+  if (colorMode === 'slope') {
+    return (
+      <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-24 h-3.5 rounded-sm overflow-hidden" style={{ background: 'linear-gradient(to right, #22c55e, #ef4444)' }} />
+          <span className="text-slate-300">Slope (Flat 0° → Steep 45°+)</span>
+        </div>
+        {filterActive && <span className="text-slate-500 font-medium">| Filter Active (others dimmed)</span>}
+      </div>
+    );
+  }
+
+  if (colorMode === 'drainage') {
+    return (
+      <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-24 h-3.5 rounded-sm overflow-hidden" style={{ background: 'linear-gradient(to right, #e0f2fe, #1e3a8a)' }} />
+          <span className="text-slate-300">Flow Accumulation (Low → High)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-3 border border-red-500 bg-red-500/10" />
+          <span className="text-red-400 font-semibold">Cascade Risk (Upstream Landslide)</span>
+        </div>
+        {filterActive && <span className="text-slate-500 font-medium">| Filter Active (others dimmed)</span>}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-center">
       {/* Elevation ramp */}
@@ -307,6 +467,7 @@ function TerrainLegend({ filterActive }) {
 //  Main export
 // ════════════════════════════════════════════════════════
 export default function TerrainDEM({ cells, filteredCells, hideControls = false }) {
+  const [colorMode, setColorMode] = useState('elevation');
   const filterActive = filteredCells !== null;
 
   if (!cells || cells.length === 0) {
@@ -319,20 +480,44 @@ export default function TerrainDEM({ cells, filteredCells, hideControls = false 
 
   return (
     <div className="w-full h-full relative" style={{ background: '#0a0f1e' }}>
+      {/* Floating Mode Toggle */}
+      <div className="absolute top-4 right-4 z-20 bg-slate-900/80 backdrop-blur-md border border-slate-700/60 p-1.5 rounded-xl shadow-2xl flex gap-1 pointer-events-auto">
+        {[
+          { id: 'elevation', label: 'Elevation' },
+          { id: 'risk', label: 'Risk' },
+          { id: 'suitability', label: 'Suitability' },
+          { id: 'slope', label: 'Slope' },
+          { id: 'drainage', label: 'Drainage' },
+        ].map(mode => (
+          <button
+            key={mode.id}
+            onClick={() => setColorMode(mode.id)}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+              colorMode === mode.id
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
       <div className="absolute inset-0">
         <Canvas
           camera={{ position: [0, 30, 50], fov: 55 }}
           style={{ width: '100%', height: '100%', background: '#0a0f1e' }}
         >
-          <SceneContent allCells={cells} filteredCells={filteredCells} />
+          <SceneContent allCells={cells} filteredCells={filteredCells} colorMode={colorMode} />
         </Canvas>
       </div>
 
       {!hideControls && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-slate-900/85 backdrop-blur-md rounded-xl border border-slate-700/50 px-5 py-3 pointer-events-none">
-          <TerrainLegend filterActive={filterActive} />
+          <TerrainLegend filterActive={filterActive} colorMode={colorMode} />
         </div>
       )}
     </div>
   );
 }
+

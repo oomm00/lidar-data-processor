@@ -3,9 +3,13 @@ package com.lidar.controller;
 import com.lidar.export.CsvExporter;
 import com.lidar.model.GridCell;
 import com.lidar.model.GridCoordinate;
+import com.lidar.processing.FlowAccumulator;
 import com.lidar.processing.GridAggregator;
 import com.lidar.processing.GridPartitioner;
+import com.lidar.processing.InsightsGenerator;
+import com.lidar.processing.SlopeCalculator;
 import com.lidar.processing.StatisticsSummarizer;
+import com.lidar.processing.SuitabilityScorer;
 import com.lidar.processing.SummaryStats;
 import com.lidar.reader.PointCloudReader;
 import com.lidar.validator.DataValidator;
@@ -18,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -35,11 +40,16 @@ public class LidarController {
             int fireRiskZones,
             int landslideZones,
             int urbanZones,
+            List<String> insights,
             String outputFile) {
     }
 
     private final PointCloudReader reader = new PointCloudReader();
     private final DataValidator validator = new DataValidator();
+    private final SlopeCalculator slopeCalculator = new SlopeCalculator();
+    private final SuitabilityScorer suitabilityScorer = new SuitabilityScorer();
+    private final FlowAccumulator flowAccumulator = new FlowAccumulator();
+    private final InsightsGenerator insightsGenerator = new InsightsGenerator();
     private final StatisticsSummarizer summarizer = new StatisticsSummarizer();
     private final CsvExporter exporter = new CsvExporter();
 
@@ -65,8 +75,21 @@ public class LidarController {
             GridAggregator aggregator = new GridAggregator(partitioner);
             Map<GridCoordinate, GridCell> grid = aggregator.aggregate(points);
 
+            // 4.5. Compute slopes for each cell
+            grid = slopeCalculator.computeSlopes(grid, resolution);
+
+            // 4.6. Compute suitability scores (after slopes, before stats)
+            grid = suitabilityScorer.computeSuitability(grid);
+
+            // 4.7. Compute flow accumulation and cascade risk
+            Map<GridCoordinate, Integer> flowAccumulation = flowAccumulator.computeFlowAccumulation(grid);
+            grid = flowAccumulator.detectCascadeRisk(grid, flowAccumulation);
+
             // 5. Summarize
             SummaryStats stats = summarizer.summarize(grid);
+
+            // 5.5. Generate human-readable insights
+            List<String> insights = insightsGenerator.generateInsights(grid, resolution);
 
             // 6. Export output CSV alongside the temp input
             Path outputPath = tempInput.resolveSibling("output.csv");
@@ -83,6 +106,7 @@ public class LidarController {
                     stats.fireRiskZones(),
                     stats.landslideZones(),
                     stats.urbanZones(),
+                    insights,
                     outputPath.toString());
             return ResponseEntity.ok(result);
 
