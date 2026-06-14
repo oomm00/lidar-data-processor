@@ -153,13 +153,15 @@ function buildCanvasDataUrl(activeCells, colorMode, filteredSet, isFilterActive)
 }
 
 // ─────────────────────────────────────────────
-//  Re-centers map when origin changes
+//  Auto-fit map to overlay bounds when data loads
 // ─────────────────────────────────────────────
-function RecenterMap({ lat, lon }) {
+function FitBoundsOnLoad({ bounds }) {
   const map = useMap();
   useEffect(() => {
-    map.setView([lat, lon], 13);
-  }, [lat, lon, map]);
+    if (bounds) {
+      map.fitBounds(bounds, { padding: [20, 20], maxZoom: 18 });
+    }
+  }, [bounds, map]);
   return null;
 }
 
@@ -175,7 +177,8 @@ function GridClickHandler({ cellMap, originLat, originLon, resolution, onCellCli
       );
       const gridY = Math.floor((lat - originLat) * 111320 / resolution);
       const cell = cellMap.get(`${gridX},${gridY}`);
-      if (cell) onCellClick({ cell, latlng: e.latlng });
+      // Store plain {lat,lng} — NOT the Leaflet LatLng object — so React can serialize it
+      if (cell) onCellClick({ cell, latlng: { lat, lng } });
     },
   });
   return null;
@@ -306,7 +309,7 @@ export default function LeafletMap({ cells, filteredCells, originLat, originLon,
         preferCanvas={true}
         style={{ width: '100%', height: '100%', background: '#0f172a' }}
       >
-        <RecenterMap lat={originLat} lon={originLon} />
+        <FitBoundsOnLoad bounds={overlayBounds} />
         <GridClickHandler
           cellMap={cellMap}
           originLat={originLat}
@@ -330,10 +333,11 @@ export default function LeafletMap({ cells, filteredCells, originLat, originLon,
           />
         )}
 
-        {/* ── Click popup ── */}
+        {/* ── Click popup — key forces remount so it opens fresh each click ── */}
         {clickedCell && (
           <Popup
-            position={clickedCell.latlng}
+            key={`${clickedCell.cell.gridX}-${clickedCell.cell.gridY}`}
+            position={[clickedCell.latlng.lat, clickedCell.latlng.lng]}
             onClose={() => setClickedCell(null)}
           >
             <div className="text-slate-900 text-xs font-medium leading-relaxed min-w-[160px]">

@@ -180,8 +180,17 @@ function buildCanvas(cells, greenClusterCells, cascadeRiskCells, drainageCells, 
   return { dataUrl: canvas.toDataURL('image/png'), minGX, maxGX, minGY, maxGY };
 }
 
-// ─── Re-center helper ─────────────────────────────────────────────────────────
-function ChangeView({ center, zoom }) {
+// ─── Auto-fit map to overlay bounds ────────────────────────────────────
+function FitBoundsOnLoad({ bounds }) {
+  const map = useMap();
+  useEffect(() => {
+    if (bounds) map.fitBounds(bounds, { padding: [20, 20], maxZoom: 18 });
+  }, [bounds, map]);
+  return null;
+}
+
+// ─── Fly-to for recommendation card clicks ───────────────────────────
+function FlyToOnSelect({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
     if (center) map.flyTo(center, zoom, { animate: true, duration: 1.0 });
@@ -189,7 +198,6 @@ function ChangeView({ center, zoom }) {
   return null;
 }
 
-// ─── Click-to-inspect ─────────────────────────────────────────────────────────
 function GridClickHandler({ cellMap, originLat, originLon, resolution, onCellClick }) {
   useMapEvents({
     click(e) {
@@ -199,7 +207,8 @@ function GridClickHandler({ cellMap, originLat, originLon, resolution, onCellCli
       );
       const gridY = Math.floor((lat - originLat) * 111320 / resolution);
       const cell = cellMap.get(`${gridX},${gridY}`);
-      if (cell) onCellClick({ cell, latlng: e.latlng });
+      // Plain {lat,lng} — not the Leaflet LatLng object — so React can serialize it
+      if (cell) onCellClick({ cell, latlng: { lat, lng } });
     },
   });
   return null;
@@ -218,7 +227,7 @@ export default function ActionPlanMap({
   highlightCoordinate,
   selectedRecoText,
 }) {
-  const [mapCenter, setMapCenter] = useState([originLat, originLon]);
+  const [mapCenter, setMapCenter] = useState(null);
   const [mapZoom,   setMapZoom]   = useState(15);
   const [clickedCell, setClickedCell] = useState(null);
 
@@ -237,7 +246,6 @@ export default function ActionPlanMap({
     return m;
   }, [cells]);
 
-  // Fly to highlight when reco selected
   useEffect(() => {
     if (highlightCoordinate) {
       setMapCenter(highlightCoordinate);
@@ -272,7 +280,8 @@ export default function ActionPlanMap({
         preferCanvas={true}
         style={{ width: '100%', height: '100%', background: '#0a0f1e' }}
       >
-        <ChangeView center={mapCenter} zoom={mapZoom} />
+        <FitBoundsOnLoad bounds={overlayBounds} />
+        <FlyToOnSelect center={mapCenter} zoom={mapZoom} />
         <GridClickHandler
           cellMap={cellMap}
           originLat={originLat}
@@ -296,10 +305,11 @@ export default function ActionPlanMap({
           />
         )}
 
-        {/* ── Click popup ── */}
+        {/* ── Click popup — key forces remount on each new cell ── */}
         {clickedCell && (
           <Popup
-            position={clickedCell.latlng}
+            key={`${clickedCell.cell.gridX}-${clickedCell.cell.gridY}`}
+            position={[clickedCell.latlng.lat, clickedCell.latlng.lng]}
             onClose={() => setClickedCell(null)}
           >
             <div className="text-slate-900 text-xs font-medium leading-relaxed min-w-[170px]">
