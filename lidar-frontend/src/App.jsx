@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SummaryPanel from './components/SummaryPanel';
 import FilterControls from './components/FilterControls';
@@ -10,6 +10,22 @@ import LeafletMap from './components/LeafletMap';
 import ActionPlanView from './components/ActionPlanView';
 import ReportView from './components/ReportView';
 
+// 12-location Uttarakhand cycle — each file processed uses the next location
+const UTTARAKHAND_LOCATIONS = [
+  { name: 'Kedarnath',       lat: 30.7346, lon: 79.0669 },
+  { name: 'Badrinath',       lat: 30.7433, lon: 79.4938 },
+  { name: 'Rishikesh',       lat: 30.0869, lon: 78.2676 },
+  { name: 'Haridwar',        lat: 29.9457, lon: 78.1642 },
+  { name: 'Mussoorie',       lat: 30.4598, lon: 78.0644 },
+  { name: 'Nainital',        lat: 29.3919, lon: 79.4542 },
+  { name: 'Auli',            lat: 30.5228, lon: 79.5660 },
+  { name: 'Valley of Flowers', lat: 30.7280, lon: 79.6050 },
+  { name: 'Chopta',          lat: 30.3982, lon: 79.2196 },
+  { name: 'Lansdowne',       lat: 29.8370, lon: 78.6870 },
+  { name: 'Chakrata',        lat: 30.7113, lon: 77.8690 },
+  { name: 'Munsiyari',       lat: 30.0667, lon: 80.2333 },
+];
+
 export default function App() {
   const [started, setStarted] = useState(false);
   const [result, setResult] = useState(null);
@@ -19,10 +35,15 @@ export default function App() {
   const [filteredCells, setFilteredCells] = useState(null);
   const [viewMode, setViewMode] = useState('report');
   const [resolution, setResolution] = useState(1.0);
-  const [originLat, setOriginLat] = useState(30.7346);
-  const [originLon, setOriginLon] = useState(79.0669);
-  // Snapshot of origin used when the current file was processed
-  const [processedOrigin, setProcessedOrigin] = useState({ lat: 30.7346, lon: 79.0669, resolution: 1.0 });
+
+  // Cycle index advances with every file processed
+  const locationIndexRef = useRef(0);
+  const [processedOrigin, setProcessedOrigin] = useState({
+    lat: UTTARAKHAND_LOCATIONS[0].lat,
+    lon: UTTARAKHAND_LOCATIONS[0].lon,
+    resolution: 1.0,
+    name: UTTARAKHAND_LOCATIONS[0].name,
+  });
   const [highlightedReco, setHighlightedReco] = useState(null);
 
   useEffect(() => {
@@ -32,8 +53,10 @@ export default function App() {
       return;
     }
 
-    // Snapshot the origin/resolution used for this specific result
-    setProcessedOrigin({ lat: originLat, lon: originLon, resolution });
+    // Advance to next location in the 12-location cycle
+    const loc = UTTARAKHAND_LOCATIONS[locationIndexRef.current % UTTARAKHAND_LOCATIONS.length];
+    locationIndexRef.current += 1;
+    setProcessedOrigin({ lat: loc.lat, lon: loc.lon, resolution, name: loc.name });
 
     const fetchGridData = async () => {
       try {
@@ -121,9 +144,6 @@ export default function App() {
     setError(null);
     setViewMode('report');
     setHighlightedReco(null);
-    // Reset origin coords to defaults for a fresh upload
-    setOriginLat(30.7346);
-    setOriginLon(79.0669);
     setResolution(1.0);
   };
 
@@ -257,10 +277,7 @@ export default function App() {
                   isLoading={loading}
                   resolution={resolution}
                   setResolution={setResolution}
-                  originLat={originLat}
-                  setOriginLat={setOriginLat}
-                  originLon={originLon}
-                  setOriginLon={setOriginLon}
+                  nextLocationName={UTTARAKHAND_LOCATIONS[locationIndexRef.current % UTTARAKHAND_LOCATIONS.length].name}
                 />
               </div>
             </div>

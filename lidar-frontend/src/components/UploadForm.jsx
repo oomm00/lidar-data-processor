@@ -8,10 +8,7 @@ export default function UploadForm({
   isLoading,
   resolution,
   setResolution,
-  originLat,
-  setOriginLat,
-  originLon,
-  setOriginLon 
+  nextLocationName
 }) {
   const [file, setFile] = useState(null);
   const fileInputRef = useRef(null);
@@ -56,7 +53,8 @@ export default function UploadForm({
     onResult(null); // Clear previous results while loading
 
     try {
-      const data = await processFile(file, resolution, originLat, originLon);
+      // Use neutral origin (0,0) — the real geo-origin is assigned by the cycle in App
+      const data = await processFile(file, resolution, 0, 0);
       onResult(data);
     } catch (err) {
       const msg = err.response?.data || err.message || "An unknown error occurred";
@@ -149,43 +147,18 @@ export default function UploadForm({
           </button>
         </div>
 
-        <div className="border-t border-slate-200 pt-4 flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex items-center space-x-3 w-full sm:w-1/2">
-              <label htmlFor="originLat" className="text-sm font-medium text-slate-700 whitespace-nowrap min-w-[120px]">
-                Origin Latitude
-              </label>
-              <input 
-                id="originLat"
-                type="number"
-                step="0.0001"
-                value={originLat}
-                onChange={(e) => setOriginLat(parseFloat(e.target.value))}
-                placeholder="e.g. 30.7346"
-                className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                disabled={isLoading}
-              />
-            </div>
-            
-            <div className="flex items-center space-x-3 w-full sm:w-1/2">
-              <label htmlFor="originLon" className="text-sm font-medium text-slate-700 whitespace-nowrap min-w-[120px]">
-                Origin Longitude
-              </label>
-              <input 
-                id="originLon"
-                type="number"
-                step="0.0001"
-                value={originLon}
-                onChange={(e) => setOriginLon(parseFloat(e.target.value))}
-                placeholder="e.g. 79.0669"
-                className="block w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border bg-white"
-                disabled={isLoading}
-              />
-            </div>
+        <div className="border-t border-slate-200 pt-4">
+          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5">
+            <svg className="w-4 h-4 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="text-sm text-slate-600">
+              Map will be pinned to{' '}
+              <span className="font-semibold text-indigo-700">{nextLocationName}</span>
+              <span className="text-xs text-slate-400 ml-1">(Uttarakhand cycle)</span>
+            </span>
           </div>
-          <p className="text-xs text-slate-500">
-            These coordinates define where your CSV grid starts on the real map. Default is Kedarnath, Uttarakhand.
-          </p>
         </div>
       </div>
     </form>
