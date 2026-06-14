@@ -214,6 +214,25 @@ function GridClickHandler({ cellMap, originLat, originLon, resolution, onCellCli
   return null;
 }
 
+// ─── Pointer cursor when hovering over a grid cell ──────────────────────
+function CursorHandler({ cellMap, originLat, originLon, resolution }) {
+  useMapEvents({
+    mousemove(e) {
+      const { lat, lng } = e.latlng;
+      const gridX = Math.floor(
+        (lng - originLon) * 111320 * Math.cos(originLat * Math.PI / 180) / resolution
+      );
+      const gridY = Math.floor((lat - originLat) * 111320 / resolution);
+      const found = cellMap.has(`${gridX},${gridY}`);
+      e.target.getContainer().style.cursor = found ? 'pointer' : '';
+    },
+    mouseout(e) {
+      e.target.getContainer().style.cursor = '';
+    },
+  });
+  return null;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ActionPlanMap({
   cells,
@@ -289,6 +308,12 @@ export default function ActionPlanMap({
           resolution={resolution}
           onCellClick={handleCellClick}
         />
+        <CursorHandler
+          cellMap={cellMap}
+          originLat={originLat}
+          originLon={originLon}
+          resolution={resolution}
+        />
 
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -324,6 +349,21 @@ export default function ActionPlanMap({
               {clickedCell.cell.cascadeRisk && (
                 <div className="mt-1 text-red-600 font-bold">⚠ Cascade Risk</div>
               )}
+            </div>
+          </Popup>
+        )}
+
+        {/* ── Recommendation balloon — pins to map when sidebar card clicked ── */}
+        {highlightCoordinate && selectedRecoText && (
+          <Popup
+            key={selectedRecoText}
+            position={highlightCoordinate}
+            onClose={() => {}}
+            closeButton={false}
+            autoPan={false}
+          >
+            <div className="text-slate-900 font-semibold text-xs p-1 max-w-[260px] leading-relaxed">
+              {selectedRecoText}
             </div>
           </Popup>
         )}
