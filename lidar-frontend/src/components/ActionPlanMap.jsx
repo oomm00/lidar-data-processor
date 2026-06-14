@@ -193,7 +193,11 @@ function FitBoundsOnLoad({ bounds }) {
 function FlyToOnSelect({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
-    if (center) map.flyTo(center, zoom, { animate: true, duration: 1.0 });
+    if (center) {
+      // Always zoom IN — never zoom out from the current level
+      const targetZoom = Math.max(map.getZoom(), zoom);
+      map.flyTo(center, targetZoom, { animate: true, duration: 1.0 });
+    }
   }, [center, zoom, map]);
   return null;
 }
