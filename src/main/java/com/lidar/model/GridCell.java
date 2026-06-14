@@ -154,32 +154,64 @@ public class GridCell {
         return minZ;
     }
 
+    public void setMinZ(double minZ) {
+        this.minZ = minZ;
+    }
+
     public double getMaxZ() {
         return maxZ;
+    }
+
+    public void setMaxZ(double maxZ) {
+        this.maxZ = maxZ;
     }
 
     public double getSumZ() {
         return sumZ;
     }
 
+    public void setSumZ(double sumZ) {
+        this.sumZ = sumZ;
+    }
+
     public int getPointCount() {
         return pointCount;
+    }
+
+    public void setPointCount(int pointCount) {
+        this.pointCount = pointCount;
     }
 
     public int getGroundPoints() {
         return groundPoints;
     }
 
+    public void setGroundPoints(int groundPoints) {
+        this.groundPoints = groundPoints;
+    }
+
     public int getVegetationPoints() {
         return vegetationPoints;
+    }
+
+    public void setVegetationPoints(int vegetationPoints) {
+        this.vegetationPoints = vegetationPoints;
     }
 
     public int getBuildingPoints() {
         return buildingPoints;
     }
 
+    public void setBuildingPoints(int buildingPoints) {
+        this.buildingPoints = buildingPoints;
+    }
+
     public int getRockPoints() {
         return rockPoints;
+    }
+
+    public void setRockPoints(int rockPoints) {
+        this.rockPoints = rockPoints;
     }
 
     public double getMaxSlope() {

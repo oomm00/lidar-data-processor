@@ -1,11 +1,19 @@
 import { useState, useRef } from 'react';
 import { processFile } from '../api/lidarApi';
 
-export default function UploadForm({ onResult, setLoading, setError, isLoading }) {
+export default function UploadForm({ 
+  onResult, 
+  setLoading, 
+  setError, 
+  isLoading,
+  resolution,
+  setResolution,
+  originLat,
+  setOriginLat,
+  originLon,
+  setOriginLon 
+}) {
   const [file, setFile] = useState(null);
-  const [resolution, setResolution] = useState(1.0);
-  const [originLat, setOriginLat] = useState(30.7346);
-  const [originLon, setOriginLon] = useState(79.0669);
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
