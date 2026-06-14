@@ -1,4 +1,4 @@
-# 🛰️ LiDAR Data Processor
+# 🛰️ Geospatial Mapping System
 
 A full-stack application for processing, analyzing, and visualizing LiDAR (Light Detection and Ranging) point cloud data. Upload raw CSV point clouds, and the system partitions them into a spatial grid, computes per-cell statistics including elevation, canopy height, land classification, and environmental risk assessment — then visualizes everything on an interactive canvas heatmap.
 

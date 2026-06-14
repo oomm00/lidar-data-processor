@@ -15,7 +15,7 @@
     <artifactId>lidar-processor</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>lidar-processor</name>
-    <description>LiDAR Point Cloud Processing Service</description>
+    <description>Geospatial Mapping System</description>
 
     <properties>
         <java.version>21</java.version>
