@@ -70,11 +70,12 @@ function buildGridData(allCells) {
     cellGrid[row][col]   = c;
   });
 
-  // Mark road positions
+  // Mark road positions and put them in cellGrid so they aren't black spots
   roadCells.forEach(c => {
     const col = c.gridX - minGX;
     const row = c.gridY - minGY;
     isRoad[row][col] = true;
+    cellGrid[row][col] = c;
   });
 
   // Fill nulls (including road positions) with neighbour interpolation then mid
@@ -162,6 +163,11 @@ function SmoothTerrainMesh({ gridData, filteredCells, colorMode }) {
             const t = (h - globalMin) / (globalMax - globalMin || 1);
             color = getElevationColor(t);
           }
+        } else if (!isFilterActive && colorMode === 'elevation') {
+          // Even if cell is missing/null, if we are in elevation mode with no filter, 
+          // color it by its interpolated height instead of making it a black hole.
+          const t = (h - globalMin) / (globalMax - globalMin || 1);
+          color = getElevationColor(t);
         } else {
           color = DIM_COLOR;
         }
