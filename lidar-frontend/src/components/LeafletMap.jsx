@@ -1,7 +1,18 @@
 import { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Rectangle, Polyline, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Rectangle, Polyline, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { gridCellToLatLon } from '../api/lidarApi';
+
+const MAX_CELLS = 3000;
+
+// Re-centers the map when originLat/Lon changes (new file processed)
+function RecenterMap({ lat, lon }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView([lat, lon], 13);
+  }, [lat, lon, map]);
+  return null;
+}
 
 export default function LeafletMap({ cells, filteredCells, originLat, originLon, resolution }) {
   const [roads, setRoads] = useState([]);
@@ -58,6 +69,22 @@ export default function LeafletMap({ cells, filteredCells, originLat, originLon,
     return set;
   }, [activeCells]);
 
+  // Smart sampling: always show all risk cells, fill rest with uniform sample
+  const displayCells = useMemo(() => {
+    if (!activeCells) return [];
+    if (activeCells.length <= MAX_CELLS) return activeCells;
+
+    const riskCells = activeCells.filter(c => c.riskLevel !== 'NORMAL');
+    const normalCells = activeCells.filter(c => c.riskLevel === 'NORMAL');
+    const remaining = Math.max(0, MAX_CELLS - riskCells.length);
+    // Uniformly sample normal cells
+    const step = Math.ceil(normalCells.length / remaining);
+    const sampledNormal = normalCells.filter((_, i) => i % step === 0).slice(0, remaining);
+    return [...riskCells, ...sampledNormal];
+  }, [activeCells]);
+
+  const isSampled = activeCells && activeCells.length > MAX_CELLS;
+
   if (!activeCells || activeCells.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-slate-900 rounded-lg border border-slate-800">
@@ -78,18 +105,24 @@ export default function LeafletMap({ cells, filteredCells, originLat, originLon,
 
   return (
     <div className="w-full h-full relative" style={{ background: '#0f172a' }}>
+      {isSampled && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-amber-900/90 border border-amber-600 text-amber-200 text-xs font-semibold px-4 py-1.5 rounded-full shadow-lg pointer-events-none">
+          ⚡ Large dataset — showing {MAX_CELLS.toLocaleString()} of {activeCells.length.toLocaleString()} cells (all risk zones + sample)
+        </div>
+      )}
       <MapContainer 
         center={[originLat, originLon]} 
         zoom={13} 
         style={{ width: '100%', height: '100%', background: '#0f172a' }}
       >
+        <RecenterMap lat={originLat} lon={originLon} />
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; OpenStreetMap contributors'
         />
 
-        {/* Draw Risk Zone Rectangles */}
-        {activeCells.map(cell => {
+        {/* Draw Risk Zone Rectangles (sampled for performance) */}
+        {displayCells.map(cell => {
           const [lat1, lon1] = gridCellToLatLon(cell.gridX, cell.gridY, resolution, originLat, originLon);
           const [lat2, lon2] = gridCellToLatLon(cell.gridX + 1, cell.gridY + 1, resolution, originLat, originLon);
           const bounds = [[lat1, lon1], [lat2, lon2]];

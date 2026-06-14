@@ -21,6 +21,8 @@ export default function App() {
   const [resolution, setResolution] = useState(1.0);
   const [originLat, setOriginLat] = useState(30.7346);
   const [originLon, setOriginLon] = useState(79.0669);
+  // Snapshot of origin used when the current file was processed
+  const [processedOrigin, setProcessedOrigin] = useState({ lat: 30.7346, lon: 79.0669, resolution: 1.0 });
   const [highlightedReco, setHighlightedReco] = useState(null);
 
   useEffect(() => {
@@ -29,6 +31,9 @@ export default function App() {
       setCells(null);
       return;
     }
+
+    // Snapshot the origin/resolution used for this specific result
+    setProcessedOrigin({ lat: originLat, lon: originLon, resolution });
 
     const fetchGridData = async () => {
       try {
@@ -116,6 +121,10 @@ export default function App() {
     setError(null);
     setViewMode('report');
     setHighlightedReco(null);
+    // Reset origin coords to defaults for a fresh upload
+    setOriginLat(30.7346);
+    setOriginLon(79.0669);
+    setResolution(1.0);
   };
 
   return (
@@ -270,9 +279,9 @@ export default function App() {
           /* Executive Summary Mode (Action Plan) replaces sidebar and main area */
           <ActionPlanView
             cells={cells}
-            originLat={originLat}
-            originLon={originLon}
-            resolution={resolution}
+            originLat={processedOrigin.lat}
+            originLon={processedOrigin.lon}
+            resolution={processedOrigin.resolution}
             recommendations={result?.recommendations || []}
             highlightedRecoText={highlightedReco}
           />
@@ -331,9 +340,9 @@ export default function App() {
                   <LeafletMap
                     cells={cells}
                     filteredCells={filteredCells}
-                    originLat={originLat}
-                    originLon={originLon}
-                    resolution={resolution}
+                    originLat={processedOrigin.lat}
+                    originLon={processedOrigin.lon}
+                    resolution={processedOrigin.resolution}
                   />
                 )}
               </div>

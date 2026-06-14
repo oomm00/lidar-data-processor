@@ -325,6 +325,11 @@ function SceneContent({ allCells, filteredCells, colorMode }) {
     camera.lookAt(0, 0, 0);
   }, [gridData, camera]);
 
+  const { cols, rows } = gridData;
+  // Size the floor grid to exactly cover the terrain extent, with a small margin
+  const gridSize = Math.max(cols, rows) + 10;
+  const gridDivisions = Math.min(gridSize, 600);
+
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -332,7 +337,7 @@ function SceneContent({ allCells, filteredCells, colorMode }) {
       <directionalLight position={[-30, 60, -30]} intensity={0.4} />
       <hemisphereLight skyColor="#1e3a5f" groundColor="#0a0a1a" intensity={0.35} />
       <OrbitControls enablePan enableZoom enableRotate minDistance={3} maxDistance={500} />
-      <gridHelper args={[400, 400, '#0d1b2a', '#0d1b2a']} position={[0, -0.05, 0]} />
+      <gridHelper args={[gridSize, gridDivisions, '#0d1b2a', '#0d1b2a']} position={[0, -0.05, 0]} />
       <SmoothTerrainMesh gridData={gridData} filteredCells={filteredCells} colorMode={colorMode} />
       <RoadRibbon gridData={gridData} />
       <CascadeRiskOutlines gridData={gridData} colorMode={colorMode} />
